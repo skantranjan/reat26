@@ -591,6 +591,7 @@ const GeneratePdf: React.FC = () => {
             cmDescription: cmDescription,
             selectedFields: selectedFields,
             selectedData: selectedData, // Pass the filtered data for PDF generation
+            selectedPeriod: selectedPeriod, // Pass the selected period
             generatePDF: true // Flag to indicate PDF should be generated
           }
         });
@@ -652,27 +653,7 @@ const GeneratePdf: React.FC = () => {
     }
   };
 
-  // Handle send for sign button click
-  const handleSendForSign = () => {
-    if (selectedRows.length === 0) {
-      alert('Please select at least one row before sending for sign.');
-      return;
-    }
-    
-    // Redirect to SendForApproval page with selected data
-    console.log('Sending for sign:', selectedRows);
-    
-    // Navigate to the SendForApproval page
-    navigate('/sedforapproval', { 
-      state: { 
-        selectedRows: selectedRows,
-        tableData: tableData,
-        cmCode: cmCode,
-        cmDescription: cmDescription,
-        selectedFields: selectedFields
-      }
-    });
-  };
+
 
   return (
     <Layout>
@@ -921,28 +902,7 @@ const GeneratePdf: React.FC = () => {
           <div className="row" style={{ marginTop: '20px' }}>
             <div className="col-12">
               <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
-                <button
-                  style={{ 
-                    background: '#30ea03', 
-                    color: '#000', 
-                    border: '1px solid #30ea03',
-                    padding: '12px 24px',
-                    borderRadius: '6px',
-                    fontWeight: '600',
-                    fontSize: '14px',
-                    cursor: selectedRows.length === 0 ? 'not-allowed' : 'pointer',
-                    opacity: selectedRows.length === 0 ? 0.6 : 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onClick={handleSendForSign}
-                  disabled={selectedRows.length === 0}
-                >
-                  <i className="ri-send-plane-2-line" style={{ fontSize: '16px' }}></i>
-                  Send for Sign
-                </button>
+
                 <button
                   style={{ 
                     background: '#30ea03', 

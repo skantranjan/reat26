@@ -9,15 +9,17 @@ const SedForApproval: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pdfData, setPdfData] = useState<any>(null);
   
-  // Get 3PM Code and Description from URL parameters
-  const cmCode = searchParams.get('cmCode') || '';
-  const cmDescription = searchParams.get('cmDescription') || '';
+  // Get 3PM Code and Description from navigation state or URL parameters
+  const cmCode = location.state?.cmCode || searchParams.get('cmCode') || '';
+  const cmDescription = location.state?.cmDescription || searchParams.get('cmDescription') || '';
 
   // Get data passed from GeneratePdf page
   useEffect(() => {
     if (location.state) {
       setPdfData(location.state);
       console.log('Received data from GeneratePdf:', location.state);
+      console.log('CM Code from state:', location.state.cmCode);
+      console.log('CM Description from state:', location.state.cmDescription);
     }
   }, [location.state]);
 
@@ -45,10 +47,12 @@ const SedForApproval: React.FC = () => {
       // Generate PDF as blob first
       const pdfBlob = await generatePDFBlob();
       
-      // Create FormData with PDF file and email
+      // Create FormData with PDF file, email, period, and cm_code
       const formData = new FormData();
       formData.append('File', pdfBlob, `component-report-${cmCode}-${new Date().toISOString().split('T')[0]}.pdf`);
       formData.append('email', email);
+      formData.append('period', pdfData.selectedPeriod || '');
+      formData.append('cm_code', cmCode);
       
       // Call your backend API with FormData
       const response = await fetch('http://localhost:3000/pdf-accesstoken', {
@@ -289,6 +293,8 @@ const SedForApproval: React.FC = () => {
                 <li><strong>3PM Code: </strong> {cmCode}</li>
                 <li> | </li>
                 <li><strong>3PM Description: </strong> {cmDescription}</li>
+                <li> | </li>
+                <li><strong>Year: </strong> {pdfData?.selectedPeriod ? pdfData.selectedPeriod.split('-')[0] : new Date().getFullYear()}</li>
               </ul>
             </div>
           </div>

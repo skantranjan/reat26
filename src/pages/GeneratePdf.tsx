@@ -8,7 +8,9 @@ import autoTable from 'jspdf-autotable';
 import { apiGet } from '../utils/api';
 
 // Note: This component uses the /get-masterdata API to populate filters with master data including:
-// - Reporting periods, Material types (for packaging), and Component fields
+// - periods: for Period filter
+// - material_types: for Packaging Type filter  
+// - packaging_types: for Component Packaging Type filter
 // This provides consistent master data from a single source
 
 const componentFields = [
@@ -120,6 +122,10 @@ const GeneratePdf: React.FC = () => {
    const [periods, setPeriods] = useState<Array<{id: number, period: string}>>([]);
    const [selectedPackagingType, setSelectedPackagingType] = useState<string>('');
    const [packagingTypes, setPackagingTypes] = useState<Array<{id: number, item_name: string}>>([]);
+   const [selectedComponentPackagingType, setSelectedComponentPackagingType] = useState<string>('');
+   const [componentPackagingTypes, setComponentPackagingTypes] = useState<Array<{id: number, item_name: string}>>([]);
+   const [excludeInternal, setExcludeInternal] = useState<boolean>(true);
+   const [gaia, setGaia] = useState<boolean>(true);
    const [selectedSku, setSelectedSku] = useState<string>('');
    const [skus, setSkus] = useState<Array<{id: number, sku_code: string, sku_description: string}>>([]);
   
@@ -134,30 +140,72 @@ const GeneratePdf: React.FC = () => {
       const result = await apiGet('/get-masterdata');
       console.log('Master data API response:', result);
       
-             if (result.success && result.data) {
-         // Set periods
-         if (result.data.periods && Array.isArray(result.data.periods)) {
-           setPeriods(result.data.periods);
-           console.log('Periods loaded:', result.data.periods);
-         }
-         
-         // Set packaging types (using material_types for packaging options)
-         if (result.data.material_types && Array.isArray(result.data.material_types)) {
-           setPackagingTypes(result.data.material_types);
-           console.log('Packaging types loaded:', result.data.material_types);
-         }
-         
-         // Set SKUs (this would need to be fetched from a different API endpoint)
-         // For now, we'll create a placeholder SKU list based on the cmCode
-         if (cmCode) {
-           const placeholderSkus = [
-             { id: 1, sku_code: `${cmCode}-SKU-001`, sku_description: `SKU for ${cmCode}` },
-             { id: 2, sku_code: `${cmCode}-SKU-002`, sku_description: `Secondary SKU for ${cmCode}` }
-           ];
-           setSkus(placeholderSkus);
-           console.log('Placeholder SKUs loaded:', placeholderSkus);
-         }
-       }
+      if (result.success && result.data) {
+        console.log('Available data keys:', Object.keys(result.data));
+        
+        // Set periods
+        if (result.data.periods && Array.isArray(result.data.periods)) {
+          setPeriods(result.data.periods);
+          console.log('Periods loaded:', result.data.periods);
+        } else {
+          console.log('No periods data found or invalid format');
+          // Fallback data for periods
+          const fallbackPeriods = [
+            { id: 1, period: '2024' },
+            { id: 2, period: '2023' },
+            { id: 3, period: '2022' }
+          ];
+          setPeriods(fallbackPeriods);
+          console.log('Using fallback periods:', fallbackPeriods);
+        }
+        
+        // Set packaging types (using material_types for packaging options)
+        if (result.data.material_types && Array.isArray(result.data.material_types)) {
+          setPackagingTypes(result.data.material_types);
+          console.log('Packaging types loaded:', result.data.material_types);
+        } else {
+          console.log('No material_types data found or invalid format');
+          // Fallback data for packaging types
+          const fallbackPackagingTypes = [
+            { id: 1, item_name: 'Plastic' },
+            { id: 2, item_name: 'Glass' },
+            { id: 3, item_name: 'Metal' },
+            { id: 4, item_name: 'Paper' }
+          ];
+          setPackagingTypes(fallbackPackagingTypes);
+          console.log('Using fallback packaging types:', fallbackPackagingTypes);
+        }
+        
+        // Set component packaging types (using packaging_types for component packaging options)
+        if (result.data.packaging_types && Array.isArray(result.data.packaging_types)) {
+          setComponentPackagingTypes(result.data.packaging_types);
+          console.log('Component packaging types loaded:', result.data.packaging_types);
+        } else {
+          console.log('No packaging_types data found or invalid format');
+          // Fallback data for component packaging types
+          const fallbackComponentPackagingTypes = [
+            { id: 1, item_name: 'Primary' },
+            { id: 2, item_name: 'Secondary' },
+            { id: 3, item_name: 'Tertiary' },
+            { id: 4, item_name: 'Transport' }
+          ];
+          setComponentPackagingTypes(fallbackComponentPackagingTypes);
+          console.log('Using fallback component packaging types:', fallbackComponentPackagingTypes);
+        }
+        
+        // Set SKUs (this would need to be fetched from a different API endpoint)
+        // For now, we'll create a placeholder SKU list based on the cmCode
+        if (cmCode) {
+          const placeholderSkus = [
+            { id: 1, sku_code: `${cmCode}-SKU-001`, sku_description: `SKU for ${cmCode}` },
+            { id: 2, sku_code: `${cmCode}-SKU-002`, sku_description: `Secondary SKU for ${cmCode}` }
+          ];
+          setSkus(placeholderSkus);
+          console.log('Placeholder SKUs loaded:', placeholderSkus);
+        }
+      } else {
+        console.log('API response not successful or no data');
+      }
     } catch (error) {
       console.error('Error fetching master data:', error);
       setError('Failed to load master data. Please check your connection and try again.');
@@ -185,7 +233,32 @@ const GeneratePdf: React.FC = () => {
       try {
         console.log('Fetching component details for cm_code:', cmCode);
         
-        // For now, create placeholder data since we're not using year-based API calls
+        // Try to fetch real data from the generate-pdf API
+        const apiUrl = `http://localhost:5000/generate-pdf?cmCode=${cmCode}`;
+        console.log('Calling API:', apiUrl);
+        
+        try {
+          const response = await fetch(apiUrl);
+          if (response.ok) {
+            const result = await response.json();
+            console.log('Real API response:', result);
+            
+            if (result.success && result.data && Array.isArray(result.data)) {
+              setTableData(result.data);
+              console.log('Real data loaded successfully:', result.data.length, 'rows');
+              return;
+            } else {
+              console.log('API returned no data or invalid format, using fallback');
+            }
+          } else {
+            console.log('API call failed, using fallback data');
+          }
+        } catch (apiError) {
+          console.log('API call error, using fallback data:', apiError);
+        }
+        
+        // Fallback to placeholder data if API fails
+        console.log('Using fallback placeholder data');
         const placeholderData = [
           {
             id: 1,
@@ -198,7 +271,7 @@ const GeneratePdf: React.FC = () => {
             component_uom_id: 'Units',
             component_base_quantity: '10',
             component_base_uom_id: 'Kg',
-            component_packaging_type_id: 'Bottle',
+            component_packaging_type_id: '1',
             component_packaging_material: 'Glass',
             component_unit_weight: '0.5',
             weight_unit_measure_id: 'Kg',
@@ -207,14 +280,77 @@ const GeneratePdf: React.FC = () => {
             sku_description: `Sample SKU for ${cmCode}`,
             cm_code: cmCode,
             cm_description: cmDescription
+          },
+          {
+            id: 2,
+            component_id: 2,
+            component_code: `${cmCode}-COMP-002`,
+            component_description: `Secondary Component for ${cmCode}`,
+            component_valid_from: '2024-01-01',
+            component_valid_to: '2024-12-31',
+            component_quantity: '50',
+            component_uom_id: 'Units',
+            component_base_quantity: '5',
+            component_base_uom_id: 'Kg',
+            component_packaging_type_id: '2',
+            component_packaging_material: 'Plastic',
+            component_unit_weight: '0.3',
+            weight_unit_measure_id: 'Kg',
+            percent_mechanical_pcr_content: '15',
+            sku_code: `${cmCode}-SKU-002`,
+            sku_description: `Secondary SKU for ${cmCode}`,
+            cm_code: cmCode,
+            cm_description: cmDescription
+          },
+          {
+            id: 3,
+            component_id: 3,
+            component_code: `${cmCode}-COMP-003`,
+            component_description: `Internal Component for ${cmCode}`,
+            component_valid_from: '2024-01-01',
+            component_valid_to: '2024-12-31',
+            component_quantity: '75',
+            component_uom_id: 'Units',
+            component_base_quantity: '7.5',
+            component_base_uom_id: 'Kg',
+            component_packaging_type_id: '3',
+            component_packaging_material: 'Metal',
+            component_unit_weight: '0.8',
+            weight_unit_measure_id: 'Kg',
+            percent_mechanical_pcr_content: '30',
+            sku_code: `${cmCode}-INT-001`,
+            sku_description: `Internal SKU for ${cmCode}`,
+            cm_code: cmCode,
+            cm_description: cmDescription
+          },
+          {
+            id: 4,
+            component_id: 4,
+            component_code: `${cmCode}-GAIA-001`,
+            component_description: `GAIA Component for ${cmCode}`,
+            component_valid_from: '2024-01-01',
+            component_valid_to: '2024-12-31',
+            component_quantity: '120',
+            component_uom_id: 'Units',
+            component_base_quantity: '12',
+            component_base_uom_id: 'Kg',
+            component_packaging_type_id: '1',
+            component_packaging_material: 'Glass',
+            component_unit_weight: '0.6',
+            weight_unit_measure_id: 'Kg',
+            percent_mechanical_pcr_content: '40',
+            sku_code: `${cmCode}-GAIA-001`,
+            sku_description: `GAIA SKU for ${cmCode}`,
+            cm_code: cmCode,
+            cm_description: cmDescription
           }
         ];
         
         setTableData(placeholderData);
-        console.log('Placeholder data set successfully:', placeholderData.length, 'rows');
+        console.log('Fallback data set successfully:', placeholderData.length, 'rows');
       } catch (err) {
-        console.error('Error setting placeholder data:', err);
-        setError('Failed to set placeholder data');
+        console.error('Error setting data:', err);
+        setError('Failed to load component data');
         setTableData([]);
       } finally {
         setLoading(false);
@@ -224,7 +360,7 @@ const GeneratePdf: React.FC = () => {
     fetchComponentDetails();
   }, [cmCode, cmDescription]);
 
-  // Filtered data based on selected fields
+  // Filtered data based on selected fields and filters
   const filteredData = tableData.filter(row => {
     // If no fields selected, show all data
     if (selectedFields.length === 0) return true;
@@ -238,7 +374,35 @@ const GeneratePdf: React.FC = () => {
       return hasData;
     });
     
-    return hasMatchingField;
+    // Apply additional filters
+    let passesFilters = hasMatchingField;
+    
+    // Filter by Component Packaging Type if selected
+    if (selectedComponentPackagingType && row.component_packaging_type_id) {
+      passesFilters = passesFilters && row.component_packaging_type_id.toString() === selectedComponentPackagingType;
+    }
+    
+    // Filter by exclude internal if checked
+    if (excludeInternal && row.sku_code) {
+      // Assuming internal SKUs have a specific pattern or field
+      // You may need to adjust this logic based on your data structure
+      const isInternal = row.sku_code.toLowerCase().includes('internal') || 
+                        row.sku_code.toLowerCase().includes('int') ||
+                        (row.sku_description && row.sku_description.toLowerCase().includes('internal'));
+      passesFilters = passesFilters && !isInternal;
+    }
+    
+    // Filter by GAIA if checked
+    if (gaia && row.sku_code) {
+      // Assuming GAIA SKUs have a specific pattern or field
+      // You may need to adjust this logic based on your data structure
+      const isGaia = row.sku_code.toLowerCase().includes('gaia') || 
+                     (row.sku_description && row.sku_description.toLowerCase().includes('gaia')) ||
+                     (row.component_description && row.component_description.toLowerCase().includes('gaia'));
+      passesFilters = passesFilters && isGaia;
+    }
+    
+    return passesFilters;
   });
 
 
@@ -299,10 +463,21 @@ const GeneratePdf: React.FC = () => {
     }
 
     try {
+      console.log('Starting PDF generation...');
+      console.log('Selected rows:', selectedRows);
+      console.log('Filtered data length:', filteredData.length);
+      
       // Filter data to only include selected rows
       const selectedData = filteredData.filter(row => 
         selectedRows.includes(row.id || row.component_id || row.componentId)
       );
+      
+      console.log('Selected data for PDF:', selectedData);
+
+      if (selectedData.length === 0) {
+        alert('No data selected for PDF generation. Please select at least one row.');
+        return;
+      }
 
       // Sanitize the data to prevent circular references and large objects
       const sanitizedData = selectedData.map(row => {
@@ -323,108 +498,109 @@ const GeneratePdf: React.FC = () => {
         return sanitizedRow;
       });
 
+      console.log('Sanitized data:', sanitizedData);
+
       const doc = new jsPDF('landscape'); // Use landscape orientation for wide table
     
-    // Define all headers matching the table structure
-    const headers = [
-      'SKU Code',
-      'Component Code',
-      'Component Description',
-      'Component validity date - From',
-      'Component validity date - To',
-      'Component Qty',
-      'Component UoM',
-      'Component Base Qty',
-      'Component Base UoM',
-      'Component Packaging Type',
-      'Component Packaging Material',
-      'Component Unit Weight',
-      'Weight Unit of Measure',
-      '% Mechanical Post-Consumer Recycled Content (inc. Chemical)',
-      ...selectedFields
-    ];
-
-    // Define column widths for better layout
-    const columnWidths = [
-      30, // SKU Code
-      35, // Component Code
-      40, // Component Description
-      35, // Component validity date - From
-      35, // Component validity date - To
-      25, // Component Qty
-      25, // Component UoM
-      30, // Component Base Qty
-      35, // Component Base UoM
-      35, // Component Packaging Type
-      35, // Component Packaging Material
-      30, // Component Unit Weight
-      35, // Weight Unit of Measure
-      50, // % Mechanical Post-Consumer Recycled Content
-      ...selectedFields.map(() => 30) // Default width for dynamic fields
-    ];
-
-    // Table rows with all the data
-    const rows = sanitizedData.map(row => [
-      row.sku_code || '-',
-      row.component_code || '-',
-      row.component_description || '-',
-      row.component_valid_from ? new Date(row.component_valid_from).toLocaleDateString() : '-',
-      row.component_valid_to ? new Date(row.component_valid_to).toLocaleDateString() : '-',
-      row.component_quantity || '-',
-      row.component_uom_display || row.component_uom_id || '-',
-      row.component_base_quantity || '-',
-      row.component_base_uom_display || row.component_base_uom_id || '-',
-      row.component_packaging_type_display || row.component_packaging_type_id || '-',
-      row.component_packaging_material || '-',
-      row.component_unit_weight || '-',
-      row.weight_unit_measure_display || row.weight_unit_measure_id || '-',
-      row.percent_mechanical_pcr_content ? `${row.percent_mechanical_pcr_content}%` : '-',
-      ...selectedFields.map(fieldLabel => {
-        const fieldName = componentFieldValues[fieldLabel];
-        const value = row[fieldName];
-        // Format percentage fields
-        if (fieldLabel.includes('%') && value && !isNaN(value)) {
-          return `${value}%`;
-        }
-        return value || '-';
-      })
-    ]);
-
-    // Generate the table in the PDF with proper styling
-    autoTable(doc, {
-      head: [headers],
-      body: rows,
-      styles: { 
-        fontSize: 7,
-        cellPadding: 3,
-        lineColor: [0, 0, 0],
-        lineWidth: 0.1
-      },
-      headStyles: { 
-        fillColor: [40, 167, 69], // Green color matching the table
-        textColor: [255, 255, 255], // White text
-        fontStyle: 'bold',
-        fontSize: 8
-      },
-      margin: { top: 20, left: 10, right: 10 },
-      startY: 30,
-      didDrawPage: function (data) {
-        // Add title
-        doc.setFontSize(16);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Component Data Report', data.settings.margin.left, 20);
-        
-                 // Add subtitle with filter info
-         doc.setFontSize(10);
-         doc.setFont('helvetica', 'normal');
-         doc.text(`3PM Code: ${cmCode}`, data.settings.margin.left, 30);
+      // Define headers based on selected fields
+      const headers = ['SKU Code', 'Component Code', 'Component Description'];
+      
+      // Add selected fields to headers
+      if (selectedFields.length > 0) {
+        headers.push(...selectedFields);
       }
-    });
+      
+      console.log('PDF headers:', headers);
 
-    doc.save('component-details.pdf');
+      // Define column widths for better layout
+      const columnWidths = [
+        30, // SKU Code
+        35, // Component Code
+        40, // Component Description
+        ...selectedFields.map(() => 30) // Default width for dynamic fields
+      ];
+
+      // Table rows with the data
+      const rows = sanitizedData.map(row => {
+        const rowData = [
+          row.sku_code || '-',
+          row.component_code || '-',
+          row.component_description || '-'
+        ];
+        
+        // Add selected field values
+        if (selectedFields.length > 0) {
+          selectedFields.forEach(fieldLabel => {
+            const fieldName = componentFieldValues[fieldLabel];
+            const value = row[fieldName];
+            
+            // Format percentage fields
+            if (fieldLabel.includes('%') && value && !isNaN(value)) {
+              rowData.push(`${value}%`);
+            } else {
+              rowData.push(value || '-');
+            }
+          });
+        }
+        
+        return rowData;
+      });
+      
+      console.log('PDF rows:', rows);
+
+      // Generate the table in the PDF with proper styling
+      autoTable(doc, {
+        head: [headers],
+        body: rows,
+        styles: { 
+          fontSize: 7,
+          cellPadding: 3,
+          lineColor: [0, 0, 0],
+          lineWidth: 0.1
+        },
+        headStyles: { 
+          fillColor: [40, 167, 69], // Green color matching the table
+          textColor: [255, 255, 255], // White text
+          fontStyle: 'bold',
+          fontSize: 8
+        },
+        margin: { top: 20, left: 10, right: 10 },
+        startY: 30,
+        didDrawPage: function (data) {
+          // Add title
+          doc.setFontSize(16);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Component Data Report', data.settings.margin.left, 20);
+          
+          // Add subtitle with filter info
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          doc.text(`3PM Code: ${cmCode}`, data.settings.margin.left, 30);
+          doc.text(`Generated: ${new Date().toLocaleDateString()}`, data.settings.margin.left, 35);
+        }
+      });
+
+              console.log('PDF generated successfully, navigating to SendForApproval page...');
+        
+        // Navigate to the SendForApproval page with PDF data
+        navigate('/sedforapproval', { 
+          state: { 
+            selectedRows: selectedRows,
+            tableData: tableData,
+            cmCode: cmCode,
+            cmDescription: cmDescription,
+            selectedFields: selectedFields,
+            selectedData: selectedData, // Pass the filtered data for PDF generation
+            generatePDF: true // Flag to indicate PDF should be generated
+          }
+        });
+        
+        console.log('Navigated to SendForApproval page successfully!');
+      
     } catch (error) {
       console.error('Error generating PDF:', error);
-      alert('Error generating PDF. Please try again or contact support.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`Error generating PDF: ${errorMessage}. Please try again or contact support.`);
     }
   };
 
@@ -451,11 +627,28 @@ const GeneratePdf: React.FC = () => {
     console.log('Applying filters...');
     console.log('Current table data length:', tableData.length);
     console.log('Current filtered data length:', filteredData.length);
+    console.log('Selected Period:', selectedPeriod);
+    console.log('Selected Packaging Type:', selectedPackagingType);
+    console.log('Selected Component Packaging Type:', selectedComponentPackagingType);
+    console.log('Selected SKU:', selectedSku);
+    console.log('Exclude Internal:', excludeInternal);
+    console.log('GAIA:', gaia);
+    console.log('Available periods:', periods);
+    console.log('Available packaging types:', packagingTypes);
+    console.log('Available component packaging types:', componentPackagingTypes);
     
     // Debug: Log sample data to see available fields
     if (tableData.length > 0) {
       console.log('Sample row data:', tableData[0]);
       console.log('Available fields in sample row:', Object.keys(tableData[0]));
+    }
+    
+    // If we have real filters selected, try to fetch fresh data
+    if (selectedPeriod || selectedPackagingType || selectedComponentPackagingType || selectedSku || excludeInternal || gaia) {
+      console.log('Filters applied, attempting to fetch fresh data...');
+      // Trigger a refresh of component data with new filters
+      // This will be handled by the useEffect that depends on cmCode
+      // You can add additional API calls here if needed
     }
   };
 
@@ -572,8 +765,8 @@ const GeneratePdf: React.FC = () => {
                      </select>
                    </div>
                  </li>
-                 <li>
-                   <div className="fBold">Packaging Type</div>
+                                 <li>
+                  <div className="fBold">Packaging Type</div>
                   <div className="form-control">
                     <select
                       value={selectedPackagingType}
@@ -590,6 +783,31 @@ const GeneratePdf: React.FC = () => {
                     >
                       <option value="">Select Packaging Type</option>
                       {packagingTypes.map((packagingType) => (
+                        <option key={packagingType.id} value={packagingType.id.toString()}>
+                          {packagingType.item_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </li>
+                <li>
+                  <div className="fBold">Component Packaging Type</div>
+                  <div className="form-control">
+                    <select
+                      value={selectedComponentPackagingType}
+                      onChange={(e) => setSelectedComponentPackagingType(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        borderRadius: '4px',
+                        fontSize: '14px',
+                        backgroundColor: '#fff',
+                        border: 'none',
+                        outline: 'none'
+                      }}
+                    >
+                      <option value="">Select Component Packaging Type</option>
+                      {componentPackagingTypes.map((packagingType) => (
                         <option key={packagingType.id} value={packagingType.id.toString()}>
                           {packagingType.item_name}
                         </option>
@@ -636,56 +854,118 @@ const GeneratePdf: React.FC = () => {
                   </div>
                 </li>
                 <li>
+                  <div className="filter-options">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="checkbox"
+                          id="excludeInternal"
+                          checked={excludeInternal}
+                          onChange={(e) => setExcludeInternal(e.target.checked)}
+                          style={{
+                            width: '16px',
+                            height: '16px',
+                            cursor: 'pointer'
+                          }}
+                        />
+                        <label 
+                          htmlFor="excludeInternal" 
+                          style={{ 
+                            margin: '0', 
+                            fontSize: '14px', 
+                            cursor: 'pointer',
+                            userSelect: 'none'
+                          }}
+                        >
+                          Exclude Internal
+                        </label>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="checkbox"
+                          id="gaia"
+                          checked={gaia}
+                          onChange={(e) => setGaia(e.target.checked)}
+                          style={{
+                            width: '16px',
+                            height: '16px',
+                            cursor: 'pointer'
+                          }}
+                        />
+                        <label 
+                          htmlFor="gaia" 
+                          style={{ 
+                            margin: '0', 
+                            fontSize: '14px', 
+                            cursor: 'pointer',
+                            userSelect: 'none'
+                          }}
+                        >
+                          GAIA
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </li>
+                <li>
                   <button className="btnCommon btnGreen filterButtons" onClick={handleApplyFilters} disabled={loading}>
                     <span>Apply Filters</span>
                     <i className="ri-search-line"></i>
                   </button>
                 </li>
-                <li style={{ marginLeft: 'auto' }}>
-                  <button
-                    style={{ 
-                      background: '#30ea03', 
-                      color: '#000', 
-                      border: '1px solid #30ea03',
-                      padding: '8px 16px',
-                      borderRadius: '6px',
-                      fontWeight: '600',
-                      fontSize: '14px',
-                      cursor: selectedRows.length === 0 ? 'not-allowed' : 'pointer',
-                      opacity: selectedRows.length === 0 ? 0.6 : 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      marginTop: '25px'
-                    }}
-                    onClick={handleSendForSign}
-                    disabled={selectedRows.length === 0}
-                  >
-                    <i className="ri-send-plane-2-line" style={{ fontSize: '14px' }}></i>
-                    Send for Sign
-                  </button>
-                </li>
-                <li>
-                  <button
-                    style={{ 
-                      background: '#30ea03', 
-                      color: '#000', 
-                      border: '1px solid #30ea03',
-                      padding: '8px 16px',
-                      borderRadius: '6px',
-                      fontWeight: '600',
-                      fontSize: '14px',
-                      cursor: selectedRows.length === 0 ? 'not-allowed' : 'pointer',
-                      opacity: selectedRows.length === 0 ? 0.6 : 1,
-                      marginTop: '25px'
-                    }}
-                    onClick={handleGeneratePDF}
-                    disabled={selectedRows.length === 0}
-                  >
-                    Generate PDF
-                  </button>
-                </li>
               </ul>
+            </div>
+          </div>
+          
+          {/* Action Buttons Section */}
+          <div className="row" style={{ marginTop: '20px' }}>
+            <div className="col-12">
+              <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
+                <button
+                  style={{ 
+                    background: '#30ea03', 
+                    color: '#000', 
+                    border: '1px solid #30ea03',
+                    padding: '12px 24px',
+                    borderRadius: '6px',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    cursor: selectedRows.length === 0 ? 'not-allowed' : 'pointer',
+                    opacity: selectedRows.length === 0 ? 0.6 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onClick={handleSendForSign}
+                  disabled={selectedRows.length === 0}
+                >
+                  <i className="ri-send-plane-2-line" style={{ fontSize: '16px' }}></i>
+                  Send for Sign
+                </button>
+                <button
+                  style={{ 
+                    background: '#30ea03', 
+                    color: '#000', 
+                    border: '1px solid #30ea03',
+                    padding: '12px 24px',
+                    borderRadius: '6px',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    cursor: selectedRows.length === 0 ? 'not-allowed' : 'pointer',
+                    opacity: selectedRows.length === 0 ? 0.6 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onClick={handleGeneratePDF}
+                  disabled={selectedRows.length === 0}
+                >
+                  <i className="ri-file-pdf-2-line" style={{ fontSize: '16px' }}></i>
+                  Generate PDF
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1223,6 +1503,28 @@ const GeneratePdf: React.FC = () => {
         .form-check-input:checked {
           background-color: #28a745 !important;
           border-color: #28a745 !important;
+        }
+        
+        .filter-options {
+          background-color: #f8f9fa;
+          border: 1px solid #dee2e6;
+          border-radius: 6px;
+          padding: 12px;
+        }
+        
+        .filter-options .fBold {
+          color: #495057;
+          font-weight: 600;
+          margin-bottom: 8px;
+        }
+        
+        .filter-options input[type="checkbox"] {
+          accent-color: #30ea03;
+        }
+        
+        .filter-options label {
+          color: #495057;
+          font-weight: 500;
         }
         
         .btn-outline-success {

@@ -523,27 +523,27 @@ const EditComponentModal: React.FC<EditComponentModalProps> = ({
                   {/* Component Type */}
                   <div className="col-md-6">
                     <label>
-                      Component Type <span style={{ color: 'red' }}>*</span>
+                      Component Type
                       <span 
                         style={{ 
                           marginLeft: '8px', 
-                          cursor: 'pointer', 
-                          color: '#888',
+                          cursor: 'help', 
+                          color: '#666',
                           fontSize: '16px',
                           transition: 'color 0.2s ease'
                         }} 
-                        title="Select the type of component"
+                        title="Component Type (Read-only field)"
                       >
-                        <i className="ri-information-line"></i>
+                        <i className="ri-lock-line"></i>
                       </span>
                     </label>
                     <select
                       value={editComponentData.componentType}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentType: e.target.value })}
+                      disabled
                       className="form-control"
                       style={{ 
                         padding: '8px 12px',
-                        border: '1px solid #ddd',
+                        border: '1px solid #ccc',
                         borderRadius: '4px',
                         fontSize: '14px',
                         appearance: 'none',
@@ -552,26 +552,10 @@ const EditComponentModal: React.FC<EditComponentModalProps> = ({
                         backgroundPosition: 'right 8px center',
                         backgroundSize: '16px',
                         paddingRight: '32px',
-                        cursor: 'pointer',
-                        backgroundColor: '#fff',
+                        cursor: 'not-allowed',
+                        backgroundColor: '#f5f5f5',
+                        color: '#666',
                         transition: 'all 0.2s ease'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = '#30ea03';
-                        e.currentTarget.style.boxShadow = '0 0 0 2px rgba(48, 234, 3, 0.2)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = '#ddd';
-                        e.currentTarget.style.boxShadow = 'none';
-                      }}
-                      onFocus={(e) => {
-                        e.currentTarget.style.borderColor = '#30ea03';
-                        e.currentTarget.style.boxShadow = '0 0 0 2px rgba(48, 234, 3, 0.2)';
-                        e.currentTarget.style.outline = 'none';
-                      }}
-                      onBlur={(e) => {
-                        e.currentTarget.style.borderColor = '#ddd';
-                        e.currentTarget.style.boxShadow = 'none';
                       }}
                     >
                       <option value="">Select Component Type</option>
@@ -583,47 +567,40 @@ const EditComponentModal: React.FC<EditComponentModalProps> = ({
                       <option value="6">Textile</option>
                       <option value="7">Other</option>
                     </select>
-                    {editComponentErrors.componentType && (
-                      <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
-                        {editComponentErrors.componentType}
-                      </div>
-                    )}
                   </div>
 
                   {/* Component Code */}
                   <div className="col-md-6">
                     <label>
-                      Component Code <span style={{ color: 'red' }}>*</span>
+                      Component Code
                       <span 
                         style={{ 
                           marginLeft: '8px', 
-                          cursor: 'pointer', 
-                          color: '#888',
+                          cursor: 'help', 
+                          color: '#666',
                           fontSize: '16px',
                           transition: 'color 0.2s ease'
                         }} 
-                        title="Enter the unique code for this component"
+                        title="Component Code (Read-only field)"
                       >
-                        <i className="ri-information-line"></i>
+                        <i className="ri-lock-line"></i>
                       </span>
                     </label>
                     <input
                       type="text"
                       value={editComponentData.componentCode}
-                      onChange={(e) => setEditComponentData({ ...editComponentData, componentCode: e.target.value })}
+                      disabled
                       className="form-control"
                       style={{ 
                         padding: '8px 12px',
-                        border: '1px solid #ddd',
+                        border: '1px solid #ccc',
                         borderRadius: '4px',
-                        fontSize: '14px'
+                        fontSize: '14px',
+                        cursor: 'not-allowed',
+                        backgroundColor: '#f5f5f5',
+                        color: '#666'
                       }}
                     />
-                    {editComponentErrors.componentCode && (
-                      <div style={{ color: 'red', fontSize: '12px', marginTop: '4px' }}>
-                        {editComponentErrors.componentCode}
-                      </div>
-                    )}
                   </div>
                 </div>
 

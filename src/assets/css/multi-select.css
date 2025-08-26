@@ -1,0 +1,279 @@
+/* MultiSelect Component Styles */
+.multi-select-container {
+  position: relative;
+  width: 100%;
+}
+
+.multi-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  background-color: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: 38px;
+}
+
+.multi-select-trigger:hover {
+  border-color: #80bdff;
+}
+
+.multi-select-trigger.open {
+  border-color: #80bdff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.multi-select-trigger.disabled {
+  background-color: #e9ecef;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.multi-select-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #495057;
+}
+
+.multi-select-trigger i {
+  margin-left: 8px;
+  transition: transform 0.2s ease;
+  color: #6c757d;
+}
+
+.multi-select-trigger i.rotated {
+  transform: rotate(180deg);
+}
+
+.multi-select-trigger i.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+.multi-select-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #ced4da;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 9999;
+  max-height: 400px;
+  overflow: hidden;
+  /* Ensure dropdown is above modal content */
+  transform: translateY(0);
+}
+
+.multi-select-search {
+  padding: 8px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.multi-select-search input {
+  width: 100%;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+
+.multi-select-search input:focus {
+  outline: none;
+  border-color: #80bdff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.multi-select-options {
+  max-height: 300px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #ced4da #f8f9fa;
+  /* Ensure scrolling works properly */
+  overflow-x: hidden;
+  /* Force scrollbar to always show */
+  scrollbar-gutter: stable;
+}
+
+.multi-select-option {
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.multi-select-option:hover {
+  background-color: #f8f9fa;
+}
+
+.multi-select-option.select-all {
+  border-bottom: 1px solid #e9ecef;
+  background-color: #f8f9fa;
+  font-weight: 600;
+}
+
+.multi-select-option.select-all:hover {
+  background-color: #e9ecef;
+}
+
+.no-options {
+  padding: 12px;
+  text-align: center;
+  color: #6c757d;
+  font-style: italic;
+}
+
+/* Checkbox Styles */
+.checkbox-container {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  width: 100%;
+  margin: 0;
+}
+
+.checkbox-container input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+.checkmark {
+  height: 18px;
+  width: 18px;
+  background-color: #fff;
+  border: 2px solid #ced4da;
+  border-radius: 3px;
+  margin-right: 8px;
+  position: relative;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.checkbox-container:hover input ~ .checkmark {
+  border-color: #80bdff;
+}
+
+.checkbox-container input:checked ~ .checkmark {
+  background-color: #007bff;
+  border-color: #007bff;
+}
+
+.checkmark:after {
+  content: "";
+  position: absolute;
+  display: none;
+  left: 5px;
+  top: 2px;
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.checkbox-container input:checked ~ .checkmark:after {
+  display: block;
+}
+
+.option-label {
+  flex: 1;
+  font-size: 14px;
+  color: #495057;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Custom Scrollbar Styles */
+.multi-select-options::-webkit-scrollbar {
+  width: 8px;
+}
+
+.multi-select-options::-webkit-scrollbar-track {
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+.multi-select-options::-webkit-scrollbar-thumb {
+  background: #ced4da;
+  border-radius: 4px;
+}
+
+.multi-select-options::-webkit-scrollbar-thumb:hover {
+  background: #adb5bd;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .multi-select-dropdown {
+    max-height: 350px;
+  }
+  
+  .multi-select-options {
+    max-height: 250px;
+  }
+}
+
+/* Modal-specific overrides to ensure dropdown visibility */
+.modal-body .multi-select-dropdown {
+  z-index: 99999 !important;
+}
+
+.modal-body .multi-select-options {
+  max-height: 250px !important;
+  overflow-y: auto !important;
+}
+
+/* Ensure modal body has enough height for dropdowns */
+.modal-body {
+  min-height: 60vh !important;
+  max-height: 80vh !important;
+  overflow-y: auto !important;
+}
+
+/* Force dropdown to be visible above modal content */
+.modal .multi-select-container {
+  position: relative;
+  z-index: 100000 !important;
+}
+
+.modal .multi-select-dropdown {
+  position: absolute !important;
+  z-index: 100001 !important;
+}
+
+/* Enhanced spacing for form sections */
+.modal .form-control {
+  margin-bottom: 16px !important;
+}
+
+.modal .col-md-6 {
+  margin-bottom: 24px !important;
+}
+
+/* Specific styling for the Fifth Section */
+.modal .col-12 > div[style*="border: 1px solid #e9ecef"] {
+  min-height: 450px !important;
+}
+
+.modal .col-12 > div[style*="border: 1px solid #e9ecef"] > div[style*="padding: 40px"] {
+  padding: 50px !important;
+  min-height: 450px !important;
+} 

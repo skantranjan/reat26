@@ -1,10 +1,209 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, useLocation } from 'react-router-dom';
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
+import { Document, Page, Text, View, StyleSheet, pdf } from '@react-pdf/renderer';
 import Layout from '../components/Layout';
+
+// PDF Styles
+const styles = StyleSheet.create({
+  page: {
+    flexDirection: 'column',
+    backgroundColor: '#ffffff',
+    padding: 40,
+    fontSize: 10
+  },
+  header: {
+    marginBottom: 30,
+    textAlign: 'center'
+  },
+  signatureLine: {
+    fontSize: 8,
+    marginBottom: 0,
+    color: '#000',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    lineHeight: 1.4
+  },
+  tableContainer: {
+    marginTop: 20
+  },
+  table: {
+    width: '100%',
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: '#000',
+    borderLeftWidth: 1,
+    borderRightWidth: 1
+  },
+  tableHeader: {
+    backgroundColor: '#006400' // Dark green header
+  },
+  tableHeaderRow: {
+    flexDirection: 'row',
+    minHeight: 35
+  },
+  tableHeaderCell: {
+    flex: 1,
+    padding: 5,
+    borderRightWidth: 1,
+    borderRightColor: '#000',
+    borderRightStyle: 'solid',
+    borderLeftWidth: 1,
+    borderLeftColor: '#000',
+    borderLeftStyle: 'solid',
+    justifyContent: 'flex-start',
+    alignItems: 'center'
+  },
+  tableHeaderCellLast: {
+    flex: 1,
+    padding: 5,
+    borderRightWidth: 1,
+    borderRightColor: '#000',
+    borderRightStyle: 'solid',
+    borderLeftWidth: 1,
+    borderLeftColor: '#000',
+    borderLeftStyle: 'solid',
+    justifyContent: 'flex-start',
+    alignItems: 'center'
+  },
+  tableHeaderText: {
+    fontSize: 5,
+    fontWeight: 'bold',
+    color: '#ffffff', // White text on green background
+    textAlign: 'left',
+    lineHeight: 1.3,
+    flexWrap: 'wrap'
+  },
+  tableRow: {
+    flexDirection: 'row',
+    minHeight: 35,
+    borderBottomWidth: 1,
+    borderBottomColor: '#000',
+    borderBottomStyle: 'solid'
+  },
+  tableCell: {
+    flex: 1,
+    padding: 4,
+    borderRightWidth: 1,
+    borderRightColor: '#000',
+    borderRightStyle: 'solid',
+    borderLeftWidth: 1,
+    borderLeftColor: '#000',
+    borderLeftStyle: 'solid',
+    justifyContent: 'flex-start',
+    alignItems: 'center'
+  },
+  tableCellLast: {
+    flex: 1,
+    padding: 4,
+    borderRightWidth: 1,
+    borderRightColor: '#000',
+    borderRightStyle: 'solid',
+    borderLeftWidth: 1,
+    borderLeftColor: '#000',
+    borderLeftStyle: 'solid',
+    justifyContent: 'flex-start',
+    alignItems: 'center'
+  },
+  tableCellText: {
+    fontSize: 9,
+    color: '#000',
+    textAlign: 'left',
+    lineHeight: 1.3,
+    flexWrap: 'wrap'
+  },
+  tableCellTextNumeric: {
+    fontSize: 9,
+    color: '#000',
+    textAlign: 'right',
+    lineHeight: 1.3,
+    flexWrap: 'wrap'
+  }
+});
+
+// PDF Document Component
+const PDFDocument = ({ data }: { data: any }) => {
+  const { selectedRows, tableData, selectedFields } = data;
+  
+  // Filter data to only include selected rows
+  const selectedData = tableData.filter((row: any) =>
+    selectedRows.includes(row.id || row.component_id || row.componentId)
+  );
+
+  // Define headers based on selected fields
+  const headers = ['SKU Code', 'Component Code', 'Component Description'];
+  if (selectedFields && selectedFields.length > 0) {
+    headers.push(...selectedFields);
+  }
+
+  return (
+    <Document>
+      <Page size="A4" orientation="landscape" style={styles.page}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.signatureLine}>
+            Signature confirms that the below list of component IDs and their associated metrics are an accurate reflection of the component information
+          </Text>
+        </View>
+
+        {/* Table */}
+        <View style={styles.tableContainer}>
+          <View style={styles.tableHeader}>
+                         <View style={styles.tableHeaderRow}>
+               {headers.map((header, index) => (
+                 <View key={index} style={index === headers.length - 1 ? styles.tableHeaderCellLast : styles.tableHeaderCell}>
+                   <Text style={styles.tableHeaderText}>{header}</Text>
+                 </View>
+               ))}
+             </View>
+          </View>
+
+                     {/* Table Rows */}
+           {selectedData.map((row: any, rowIndex: number) => (
+             <View key={rowIndex} style={styles.tableRow}>
+               {/* SKU Code */}
+               <View style={styles.tableCell}>
+                 <Text style={styles.tableCellText}>{row.sku_code || '-'}</Text>
+               </View>
+               {/* Component Code */}
+               <View style={styles.tableCell}>
+                 <Text style={styles.tableCellText}>{row.component_code || '-'}</Text>
+               </View>
+               {/* Component Description */}
+               <View style={styles.tableCell}>
+                 <Text style={styles.tableCellText}>{row.component_description || '-'}</Text>
+               </View>
+               {/* Selected Fields */}
+               {selectedFields && selectedFields.length > 0 && selectedFields.map((fieldLabel: string, fieldIndex: number) => {
+                 const totalFields = 3 + selectedFields.length; // SKU + Component Code + Component Description + selected fields
+                 const currentIndex = 3 + fieldIndex; // Start after the first 3 columns
+                 
+                 // Determine if this field should be right-aligned (numeric)
+                 const isNumericField = fieldLabel.toLowerCase().includes('qty') || 
+                                       fieldLabel.toLowerCase().includes('weight') || 
+                                       fieldLabel.toLowerCase().includes('recycled') ||
+                                       fieldLabel.toLowerCase().includes('percentage') ||
+                                       fieldLabel.toLowerCase().includes('%');
+                 
+                 return (
+                   <View key={fieldIndex} style={currentIndex === totalFields - 1 ? styles.tableCellLast : styles.tableCell}>
+                     <Text style={isNumericField ? styles.tableCellTextNumeric : styles.tableCellText}>
+                       {row[fieldLabel] || row[fieldLabel.toLowerCase()] || '-'}
+                     </Text>
+                   </View>
+                 );
+               })}
+             </View>
+           ))}
+        </View>
+      </Page>
+    </Document>
+  );
+};
 
 const SedForApproval: React.FC = () => {
   const [searchParams] = useSearchParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pdfData, setPdfData] = useState<any>(null);
@@ -22,6 +221,9 @@ const SedForApproval: React.FC = () => {
       console.log('Received data from GeneratePdf:', location.state);
       console.log('CM Code from state:', location.state.cmCode);
       console.log('CM Description from state:', location.state.cmDescription);
+      console.log('Period from state:', location.state.selectedPeriod);
+      console.log('Period type:', typeof location.state.selectedPeriod);
+      console.log('Period value:', location.state.selectedPeriod);
     }
   }, [location.state]);
 
@@ -39,10 +241,15 @@ const SedForApproval: React.FC = () => {
     setIsSubmitting(true);
     
     try {
+      // Get period value with fallback
+      const periodValue = pdfData.selectedPeriod || 'Default Period';
+      
       console.log('Sending for approval with email:', email);
       console.log('PDF data:', pdfData);
       console.log('CM Code:', cmCode);
       console.log('CM Description:', cmDescription);
+      console.log('Period being sent:', periodValue);
+      console.log('Period type:', typeof periodValue);
       
       // Generate PDF as blob first
       const pdfBlob = await generatePDFBlob();
@@ -51,8 +258,15 @@ const SedForApproval: React.FC = () => {
       const formData = new FormData();
       formData.append('File', pdfBlob, `component-report-${cmCode}-${new Date().toISOString().split('T')[0]}.pdf`);
       formData.append('email', email);
-      formData.append('period', pdfData.selectedPeriod || '');
+      formData.append('period', periodValue);
       formData.append('cm_code', cmCode);
+      
+      // Debug: Log what's being sent
+      console.log('FormData contents being sent:');
+      console.log('File:', `component-report-${cmCode}-${new Date().toISOString().split('T')[0]}.pdf`);
+      console.log('Email:', email);
+      console.log('Period:', periodValue);
+      console.log('CM Code:', cmCode);
       
       // Call your backend API with FormData
       const response = await fetch('http://localhost:3000/pdf-accesstoken', {
@@ -72,7 +286,7 @@ const SedForApproval: React.FC = () => {
           cmCode: cmCode,
           cmDescription: cmDescription,
           timestamp: new Date().toLocaleString(),
-          period: pdfData.selectedPeriod || 'N/A'
+          period: periodValue
         });
         setEmail('');
         setShowSuccessModal(true);
@@ -87,189 +301,44 @@ const SedForApproval: React.FC = () => {
     }
   };
 
-  // Helper function to generate PDF as blob
+  // Helper function to generate PDF as blob using @react-pdf/renderer
   const generatePDFBlob = async (): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      try {
-        // Import jsPDF dynamically to avoid SSR issues
-        import('jspdf').then(({ default: jsPDF }) => {
-          import('jspdf-autotable').then(({ default: autoTable }) => {
-            const doc = new jsPDF('landscape');
-            
-            // Extract data from pdfData
-            const { selectedRows, tableData, selectedFields, cmCode: pdfCmCode } = pdfData;
-            
-            // Filter data to only include selected rows
-            const selectedData = tableData.filter((row: any) =>
-              selectedRows.includes(row.id || row.component_id || row.componentId)
-            );
-
-            if (selectedData.length === 0) {
-              reject(new Error('No data available for PDF generation'));
-              return;
-            }
-
-            // Define headers based on selected fields
-            const headers = ['SKU Code', 'Component Code', 'Component Description'];
-            if (selectedFields && selectedFields.length > 0) {
-              headers.push(...selectedFields);
-            }
-
-            // Create table rows
-            const rows = selectedData.map((row: any) => {
-              const rowData = [
-                row.sku_code || '-',
-                row.component_code || '-',
-                row.component_description || '-'
-              ];
-
-              // Add selected field values
-              if (selectedFields && selectedFields.length > 0) {
-                selectedFields.forEach((fieldLabel: string) => {
-                  const value = row[fieldLabel] || row[fieldLabel.toLowerCase()] || '-';
-                  rowData.push(value);
-                });
-              }
-
-              return rowData;
-            });
-
-            // Generate the table
-            autoTable(doc, {
-              head: [headers],
-              body: rows,
-              styles: {
-                fontSize: 7,
-                cellPadding: 3,
-                lineColor: [0, 0, 0],
-                lineWidth: 0.1
-              },
-              headStyles: {
-                fillColor: [40, 167, 69],
-                textColor: [255, 255, 255],
-                fontStyle: 'bold',
-                fontSize: 8
-              },
-              margin: { top: 20, left: 10, right: 10 },
-              startY: 30,
-              didDrawPage: function (data) {
-                // Add title
-                doc.setFontSize(16);
-                doc.setFont('helvetica', 'bold');
-                doc.text('Component Data Report', data.settings.margin.left, 20);
-                
-                // Add subtitle
-                doc.setFontSize(10);
-                doc.setFont('helvetica', 'normal');
-                doc.text(`3PM Code: ${pdfCmCode}`, data.settings.margin.left, 30);
-                doc.text(`Generated: ${new Date().toLocaleDateString()}`, data.settings.margin.left, 35);
-              }
-            });
-
-            // Convert to blob
-            const pdfBlob = doc.output('blob');
-            resolve(pdfBlob);
-          });
-        });
-      } catch (error) {
-        reject(error);
+    try {
+      if (!pdfData) {
+        throw new Error('No PDF data available');
       }
-    });
+
+      // Validate required data
+      if (!pdfData.tableData || !pdfData.selectedRows) {
+        throw new Error('Invalid PDF data structure');
+      }
+
+      // Generate PDF blob using @react-pdf/renderer
+      const pdfBlob = await pdf(<PDFDocument data={pdfData} />).toBlob();
+      console.log('PDF generated successfully:', pdfBlob);
+      return pdfBlob;
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      throw error;
+    }
   };
 
-  const handleGeneratePDF = () => {
+  const handleGeneratePDF = async () => {
     if (pdfData) {
-      // Generate and open PDF in new tab
       try {
-        // Import jsPDF dynamically to avoid SSR issues
-        import('jspdf').then(({ default: jsPDF }) => {
-          import('jspdf-autotable').then(({ default: autoTable }) => {
-            const doc = new jsPDF('landscape');
-            
-            // Extract data from pdfData
-            const { selectedRows, tableData, selectedFields, cmCode: pdfCmCode } = pdfData;
-            
-            // Filter data to only include selected rows
-            const selectedData = tableData.filter((row: any) =>
-              selectedRows.includes(row.id || row.component_id || row.componentId)
-            );
-
-            if (selectedData.length === 0) {
-              return;
-            }
-
-            // Define headers based on selected fields
-            const headers = ['SKU Code', 'Component Code', 'Component Description'];
-            if (selectedFields && selectedFields.length > 0) {
-              headers.push(...selectedFields);
-            }
-
-            // Create table rows
-            const rows = selectedData.map((row: any) => {
-              const rowData = [
-                row.sku_code || '-',
-                row.component_code || '-',
-                row.component_description || '-'
-              ];
-
-              // Add selected field values
-              if (selectedFields && selectedFields.length > 0) {
-                selectedFields.forEach((fieldLabel: string) => {
-                  const value = row[fieldLabel] || row[fieldLabel.toLowerCase()] || '-';
-                  rowData.push(value);
-                });
-              }
-
-              return rowData;
-            });
-
-            // Generate the table
-            autoTable(doc, {
-              head: [headers],
-              body: rows,
-              styles: {
-                fontSize: 7,
-                cellPadding: 3,
-                lineColor: [0, 0, 0],
-                lineWidth: 0.1
-              },
-              headStyles: {
-                fillColor: [40, 167, 69],
-                textColor: [255, 255, 255],
-                fontStyle: 'bold',
-                fontSize: 8
-              },
-              margin: { top: 20, left: 10, right: 10 },
-              startY: 30,
-              didDrawPage: function (data) {
-                // Add title
-                doc.setFontSize(16);
-                doc.setFont('helvetica', 'bold');
-                doc.text('Component Data Report', data.settings.margin.left, 20);
-                
-                // Add subtitle
-                doc.setFontSize(10);
-                doc.setFont('helvetica', 'normal');
-                doc.text(`3PM Code: ${pdfCmCode}`, data.settings.margin.left, 30);
-                doc.text(`Generated: ${new Date().toLocaleDateString()}`, data.settings.margin.left, 35);
-              }
-            });
-
-            // Open PDF in new tab
-            const pdfBlob = doc.output('blob');
-            const pdfUrl = URL.createObjectURL(pdfBlob);
-            window.open(pdfUrl, '_blank');
-            
-            // Clean up
-            setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000);
-          });
-        });
-             } catch (error) {
-         console.error('Error generating PDF:', error);
-       }
-         } else {
-       // No data available
-     }
+        // Generate PDF blob
+        const pdfBlob = await generatePDFBlob();
+        
+        // Create URL and open in new tab
+        const pdfUrl = URL.createObjectURL(pdfBlob);
+        window.open(pdfUrl, '_blank');
+        
+        // Clean up
+        setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000);
+      } catch (error) {
+        console.error('Error generating PDF:', error);
+      }
+    }
   };
 
   return (
@@ -287,6 +356,36 @@ const SedForApproval: React.FC = () => {
             </div>
             <h1>Send for Approval</h1>
           </div>
+          
+          {/* Back Button */}
+          <button
+            onClick={() => navigate(-1)}
+            style={{
+              background: 'linear-gradient(135deg, #30ea03 0%, #28c402 100%)',
+              color: '#000',
+              border: 'none',
+              padding: '10px 20px',
+              borderRadius: '8px',
+              fontWeight: '600',
+              fontSize: '14px',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.3s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 6px 20px rgba(48, 234, 3, 0.3)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          >
+            <i className="ri-arrow-left-line"></i>
+            Back
+          </button>
         </div>
 
         {/* 3PM Info Section */}
@@ -546,45 +645,13 @@ const SedForApproval: React.FC = () => {
                 </div>
               </div>
 
-              {/* Action Buttons */}
+              {/* Action Button */}
               <div style={{
                 display: 'flex',
-                gap: '12px',
-                justifyContent: 'center',
-                flexWrap: 'wrap'
+                justifyContent: 'center'
               }}>
                 <button
                   onClick={() => setShowSuccessModal(false)}
-                  style={{
-                    background: 'linear-gradient(135deg, #30ea03 0%, #28c402 100%)',
-                    color: '#000',
-                    border: 'none',
-                    padding: '12px 24px',
-                    borderRadius: '8px',
-                    fontWeight: '600',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease',
-                    minWidth: '120px'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(48, 234, 3, 0.3)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                >
-                  <i className="ri-check-line" style={{ marginRight: '8px' }}></i>
-                  Great!
-                </button>
-                
-                <button
-                  onClick={() => {
-                    setShowSuccessModal(false);
-                    setEmail('');
-                  }}
                   style={{
                     background: '#6c757d',
                     color: '#fff',
@@ -606,8 +673,8 @@ const SedForApproval: React.FC = () => {
                     e.currentTarget.style.boxShadow = 'none';
                   }}
                 >
-                  <i className="ri-send-plane-2-line" style={{ marginRight: '8px' }}></i>
-                  Send Another
+                  <i className="ri-close-line" style={{ marginRight: '8px' }}></i>
+                  Cancel
                 </button>
               </div>
             </div>

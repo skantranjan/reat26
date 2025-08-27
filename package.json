@@ -6,6 +6,7 @@
     "@azure/msal-browser": "^4.15.0",
     "@azure/msal-react": "^3.0.15",
     "@fastify/cors": "^11.0.1",
+    "@react-pdf/renderer": "^4.3.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",

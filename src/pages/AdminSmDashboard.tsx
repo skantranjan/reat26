@@ -223,18 +223,11 @@ const AdminSmDashboard: React.FC = () => {
              // Set current period as default (most recent period)
              if (processedPeriods.length > 0) {
                const sortedPeriods = [...processedPeriods].sort((a, b) => {
-                 // Extract year from period string (e.g., "July 2025 to June 2026" -> 2025)
-                 const aYearMatch = a.period.match(/\b(20\d{2})\b/);
-                 const bYearMatch = b.period.match(/\b(20\d{2})\b/);
-                 
-                 const aYear = aYearMatch ? parseInt(aYearMatch[1]) : 0;
-                 const bYear = bYearMatch ? parseInt(bYearMatch[1]) : 0;
-                 
-                 return bYear - aYear; // Sort in descending order (most recent first)
+                 // Sort by period ID in descending order (3, 2, 1)
+                 return b.id - a.id;
                });
                
                const currentPeriod = sortedPeriods[0];
-               console.log('Setting current period as default:', currentPeriod);
                setSelectedPeriod(currentPeriod.id.toString());
                
                // Apply the current period filter automatically
@@ -244,7 +237,21 @@ const AdminSmDashboard: React.FC = () => {
                }));
              }
           } else {
-            setPeriods([]);
+            // Fallback to hardcoded periods if not available in API
+            const fallbackPeriods = [
+              { id: 3, period: "July 2026 to June 2027" },
+              { id: 2, period: "July 2025 to June 2026" },
+              { id: 1, period: "July 2024 to June 2025" }
+            ];
+            setPeriods(fallbackPeriods);
+            console.log('Using fallback periods:', fallbackPeriods);
+            
+            // Set period 3 as default (most recent)
+            setSelectedPeriod('3');
+            setAppliedFilters(prev => ({
+              ...prev,
+              period: '3'
+            }));
           }
           
           // Process regions
@@ -309,7 +316,17 @@ const AdminSmDashboard: React.FC = () => {
       } catch (err) {
         console.error('Error fetching master data:', err);
         // Set fallback data on error
-        setPeriods([]);
+        const fallbackPeriods = [
+          { id: 3, period: "July 2026 to June 2027" },
+          { id: 2, period: "July 2025 to June 2026" },
+          { id: 1, period: "July 2024 to June 2025" }
+        ];
+        setPeriods(fallbackPeriods);
+        setSelectedPeriod('3'); // Set period 3 as default
+        setAppliedFilters(prev => ({
+          ...prev,
+          period: '3'
+        }));
         setRegions(['ANZ', 'CHINA', 'EU', 'ISC', 'Latam', 'MEA', 'NA', 'North Asia', 'SEAT']);
         setSrmLeads(['Alejandro Concha', 'Bart Kawa', 'Chris Alziar', 'David Patterson',
           'David Wang', 'Elizabeth Ramirez', 'Eric Schock', 'Fabrice Dollet',
@@ -332,13 +349,8 @@ const AdminSmDashboard: React.FC = () => {
     if (periods.length > 0 && !selectedPeriod) {
       // If periods are loaded but no period is selected, set the current period
       const sortedPeriods = [...periods].sort((a, b) => {
-        // Extract year from period string (e.g., "July 2025 to June 2026" -> 2025)
-        const aYearMatch = a.period.match(/\b(20\d{2})\b/);
-        const bYearMatch = b.period.match(/\b(20\d{2})\b/);
-        
-        const aYear = aYearMatch ? parseInt(aYearMatch[1]) : 0;
-        const bYear = bYearMatch ? parseInt(bYearMatch[1]) : 0;
-        
+        const aYear = parseInt(a.period);
+        const bYear = parseInt(b.period);
         return bYear - aYear; // Sort in descending order (most recent first)
       });
       
@@ -603,13 +615,11 @@ const AdminSmDashboard: React.FC = () => {
 
   // Handle file icon click to show signoff details
   const handleFileIconClick = async (cmCode: string) => {
-    console.log('File icon clicked for CM Code:', cmCode);
     setSelectedCmCode(cmCode);
     setShowSignoffModal(true);
-    console.log('Modal should be open now, showSignoffModal:', true);
     setSignoffLoading(true);
     setSignoffError(null);
-    setSignoffDetails([]);
+    // Don't clear signoffDetails immediately - let the API call update it
     setSelectedSignoffPeriod('');
 
     // Use the selected period from dashboard filter, or current period if none selected
@@ -621,9 +631,6 @@ const AdminSmDashboard: React.FC = () => {
         return bYear - aYear; // Sort in descending order (most recent first)
       });
       periodToUse = sortedPeriods[0].id.toString();
-      console.log('No period selected, using current period for signoff details:', periodToUse);
-    } else {
-      console.log('Using selected period from dashboard filter for signoff details:', periodToUse);
     }
 
     // Fetch signoff details with the appropriate period
@@ -1161,6 +1168,8 @@ const AdminSmDashboard: React.FC = () => {
   // Filter signoff details - since we're using one API, we just show the data as returned
   const filteredSignoffDetails = signoffDetails;
 
+
+
   return (
     <Layout>
       {loading && <Loader />}
@@ -1578,6 +1587,15 @@ const AdminSmDashboard: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'center'
         }}>
+          {(() => {
+            console.log('Modal rendering with data:', {
+              signoffDetails,
+              filteredSignoffDetails,
+              selectedCmCode,
+              selectedSignoffPeriod
+            });
+            return null;
+          })()}
           <div className="signoff-modal" style={{
             background: 'linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%)',
             width: '80%',
@@ -1629,6 +1647,7 @@ const AdminSmDashboard: React.FC = () => {
             
             {signoffLoading && <Loader />}
             {signoffError && <p style={{ color: 'red' }}>{signoffError}</p>}
+            
             {filteredSignoffDetails.length > 0 && (
               <div>
                 <div style={{ 
@@ -1637,7 +1656,7 @@ const AdminSmDashboard: React.FC = () => {
                   borderBottom: '2px solid #e9ecef'
                 }}>
                   <h3 style={{ margin: 0, color: '#333', fontSize: '18px', fontWeight: '600' }}>
-                    Signoff Records
+                    Signoff Records ({filteredSignoffDetails.length} records)
                   </h3>
                 </div>
                 
@@ -1655,10 +1674,10 @@ const AdminSmDashboard: React.FC = () => {
                     {/* Key Fields in Row */}
                     <div style={{
                       display: 'grid',
-                      gridTemplateColumns: '1fr 1fr 1fr 1fr',
+                      gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr',
                       gap: '8px'
                     }}>
-                      {/* Signoff By */}
+                      {/* Email */}
                       <div style={{
                         background: '#ffffff',
                         padding: '6px',
@@ -1672,17 +1691,17 @@ const AdminSmDashboard: React.FC = () => {
                           gap: '4px',
                           marginBottom: '4px'
                         }}>
-                          <i className="ri-user-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
+                          <i className="ri-mail-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
                           <span style={{ fontSize: '10px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>
-                            Signoff By
+                            Email
                           </span>
                         </div>
                         <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>
-                          {record.signoff_by || 'N/A'}
+                          {record.email || 'N/A'}
                         </div>
                       </div>
 
-                      {/* Signoff Date */}
+                      {/* Status */}
                       <div style={{
                         background: '#ffffff',
                         padding: '6px',
@@ -1696,61 +1715,13 @@ const AdminSmDashboard: React.FC = () => {
                           gap: '4px',
                           marginBottom: '4px'
                         }}>
-                          <i className="ri-calendar-check-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
+                          <i className="ri-checkbox-circle-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
                           <span style={{ fontSize: '10px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>
-                            Signoff Date
+                            Status
                           </span>
                         </div>
                         <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>
-                          {record.signoff_date ? (
-                            new Date(record.signoff_date).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric'
-                            })
-                          ) : 'N/A'}
-                        </div>
-                      </div>
-
-                      {/* Document URL */}
-                      <div style={{
-                        background: '#ffffff',
-                        padding: '6px',
-                        borderRadius: '4px',
-                        border: '1px solid #e9ecef',
-                        position: 'relative'
-                      }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          marginBottom: '4px'
-                        }}>
-                          <i className="ri-file-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
-                          <span style={{ fontSize: '10px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>
-                            Document
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>
-                          {record.document_url ? (
-                            <a 
-                              href={record.document_url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              style={{
-                                color: '#007bff',
-                                textDecoration: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}
-                            >
-                              <i className="ri-external-link-line" style={{ fontSize: '10px' }}></i>
-                              View Document
-                            </a>
-                          ) : (
-                            <span style={{ color: '#6c757d' }}>No document available</span>
-                          )}
+                          {record.status || 'N/A'}
                         </div>
                       </div>
 
@@ -1774,10 +1745,10 @@ const AdminSmDashboard: React.FC = () => {
                           </span>
                         </div>
                         <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>
-                          {record.period ? (
+                          {record.periods ? (
                             (() => {
                               // Convert period ID to readable format
-                              const periodId = record.period;
+                              const periodId = record.periods;
                               const periodMap: { [key: string]: string } = {
                                 '1': 'July 2024 to June 2025',
                                 '2': 'July 2025 to June 2026',
@@ -1790,6 +1761,89 @@ const AdminSmDashboard: React.FC = () => {
                           ) : 'N/A'}
                         </div>
                       </div>
+
+                      {/* Created Date */}
+                      <div style={{
+                        background: '#ffffff',
+                        padding: '6px',
+                        borderRadius: '4px',
+                        border: '1px solid #e9ecef',
+                        position: 'relative'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          marginBottom: '4px'
+                        }}>
+                          <i className="ri-calendar-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
+                          <span style={{ fontSize: '10px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>
+                            Created Date
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>
+                          {record.created_at ? (
+                            new Date(record.created_at).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
+                            })
+                          ) : 'N/A'}
+                        </div>
+                      </div>
+
+                      {/* Signed PDF */}
+                      <div style={{
+                        background: '#ffffff',
+                        padding: '6px',
+                        borderRadius: '4px',
+                        border: '1px solid #e9ecef',
+                        position: 'relative'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          marginBottom: '4px'
+                        }}>
+                          <i className="ri-file-pdf-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
+                          <span style={{ fontSize: '10px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>
+                            Signed PDF
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>
+                          {record.signed_pdf_url ? (
+                            <a 
+                              href={record.signed_pdf_url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              style={{
+                                color: '#007bff',
+                                textDecoration: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              <i className="ri-external-link-line" style={{ fontSize: '10px' }}></i>
+                              View PDF
+                            </a>
+                          ) : (
+                            <span style={{ color: '#6c757d' }}>No PDF available</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Additional Details */}
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '8px',
+                      background: '#f8f9fa',
+                      borderRadius: '4px',
+                      border: '1px solid #e9ecef'
+                    }}>
+                      {/* Additional details can be added here in the future if needed */}
                     </div>
                   </div>
                 ))}

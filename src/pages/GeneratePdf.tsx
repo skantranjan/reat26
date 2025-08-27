@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MultiSelect from '../components/MultiSelect';
 import ConfirmModal from '../components/ConfirmModal';
@@ -93,6 +93,17 @@ const componentFieldValues: { [key: string]: string } = {
 const GeneratePdf: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Get data passed from AdminCmSkuDetail page
+  const passedData = location.state || {};
+  const passedSkuData = passedData.skuData || [];
+  const passedMaterialTypes = passedData.materialTypes || [];
+  const passedUnitOfMeasureOptions = passedData.unitOfMeasureOptions || [];
+  const passedPackagingLevelOptions = passedData.packagingLevelOptions || [];
+  const passedPackagingMaterialOptions = passedData.packagingMaterialOptions || [];
+  const passedComponentBaseUoms = passedData.componentBaseUoms || [];
+  
   const [selectedFields, setSelectedFields] = useState<string[]>([
     'Component Code',
     'Component Description',
@@ -125,7 +136,6 @@ const GeneratePdf: React.FC = () => {
    const [selectedComponentPackagingType, setSelectedComponentPackagingType] = useState<string>('');
    const [componentPackagingTypes, setComponentPackagingTypes] = useState<Array<{id: number, item_name: string}>>([]);
    const [excludeInternal, setExcludeInternal] = useState<boolean>(true);
-   const [gaia, setGaia] = useState<boolean>(true);
    const [selectedSku, setSelectedSku] = useState<string>('');
    const [skus, setSkus] = useState<Array<{id: number, sku_code: string, sku_description: string}>>([]);
   
@@ -160,9 +170,12 @@ const GeneratePdf: React.FC = () => {
         }
         
         // Set packaging types (using material_types for packaging options)
-        if (result.data.material_types && Array.isArray(result.data.material_types)) {
+        if (passedMaterialTypes && passedMaterialTypes.length > 0) {
+          setPackagingTypes(passedMaterialTypes);
+          console.log('Packaging types loaded from passed data:', passedMaterialTypes);
+        } else if (result.data.material_types && Array.isArray(result.data.material_types)) {
           setPackagingTypes(result.data.material_types);
-          console.log('Packaging types loaded:', result.data.material_types);
+          console.log('Packaging types loaded from API:', result.data.material_types);
         } else {
           console.log('No material_types data found or invalid format');
           // Fallback data for packaging types
@@ -176,26 +189,37 @@ const GeneratePdf: React.FC = () => {
           console.log('Using fallback packaging types:', fallbackPackagingTypes);
         }
         
-        // Set component packaging types (using packaging_types for component packaging options)
-        if (result.data.packaging_types && Array.isArray(result.data.packaging_types)) {
-          setComponentPackagingTypes(result.data.packaging_types);
-          console.log('Component packaging types loaded:', result.data.packaging_types);
+        // Set component packaging types (using packaging_materials for component packaging options)
+        if (passedPackagingMaterialOptions && passedPackagingMaterialOptions.length > 0) {
+          setComponentPackagingTypes(passedPackagingMaterialOptions);
+          console.log('Component packaging types loaded from passed data:', passedPackagingMaterialOptions);
+        } else if (result.data.packaging_materials && Array.isArray(result.data.packaging_materials)) {
+          setComponentPackagingTypes(result.data.packaging_materials);
+          console.log('Component packaging types loaded from API:', result.data.packaging_materials);
         } else {
-          console.log('No packaging_types data found or invalid format');
+          console.log('No packaging_materials data found or invalid format');
           // Fallback data for component packaging types
           const fallbackComponentPackagingTypes = [
-            { id: 1, item_name: 'Primary' },
-            { id: 2, item_name: 'Secondary' },
-            { id: 3, item_name: 'Tertiary' },
-            { id: 4, item_name: 'Transport' }
+            { id: 1, item_name: 'Blister Pack' },
+            { id: 2, item_name: 'Bottle' },
+            { id: 3, item_name: 'Carton' },
+            { id: 4, item_name: 'Sachet' }
           ];
           setComponentPackagingTypes(fallbackComponentPackagingTypes);
           console.log('Using fallback component packaging types:', fallbackComponentPackagingTypes);
         }
         
-        // Set SKUs (this would need to be fetched from a different API endpoint)
-        // For now, we'll create a placeholder SKU list based on the cmCode
-        if (cmCode) {
+        // Set SKUs from passed data from AdminCmSkuDetail page
+        if (passedSkuData && passedSkuData.length > 0) {
+          const skuOptions = passedSkuData.map((sku: any, index: number) => ({
+            id: sku.id || index + 1,
+            sku_code: sku.sku_code || sku.sku || `SKU-${index + 1}`,
+            sku_description: sku.sku_description || sku.description || `SKU Description ${index + 1}`
+          }));
+          setSkus(skuOptions);
+          console.log('SKUs loaded from passed data:', skuOptions);
+        } else if (cmCode) {
+          // Fallback to placeholder SKUs if no passed data
           const placeholderSkus = [
             { id: 1, sku_code: `${cmCode}-SKU-001`, sku_description: `SKU for ${cmCode}` },
             { id: 2, sku_code: `${cmCode}-SKU-002`, sku_description: `Secondary SKU for ${cmCode}` }
@@ -216,6 +240,18 @@ const GeneratePdf: React.FC = () => {
   useEffect(() => {
     fetchMasterData();
   }, []);
+
+  // Log passed data for debugging
+  useEffect(() => {
+    console.log('Data passed from AdminCmSkuDetail page:', {
+      skuData: passedSkuData,
+      materialTypes: passedMaterialTypes,
+      unitOfMeasureOptions: passedUnitOfMeasureOptions,
+      packagingLevelOptions: passedPackagingLevelOptions,
+      packagingMaterialOptions: passedPackagingMaterialOptions,
+      componentBaseUoms: passedComponentBaseUoms
+    });
+  }, [passedSkuData, passedMaterialTypes, passedUnitOfMeasureOptions, passedPackagingLevelOptions, passedPackagingMaterialOptions, passedComponentBaseUoms]);
 
 
 
@@ -323,27 +359,7 @@ const GeneratePdf: React.FC = () => {
             cm_code: cmCode,
             cm_description: cmDescription
           },
-          {
-            id: 4,
-            component_id: 4,
-            component_code: `${cmCode}-GAIA-001`,
-            component_description: `GAIA Component for ${cmCode}`,
-            component_valid_from: '2024-01-01',
-            component_valid_to: '2024-12-31',
-            component_quantity: '120',
-            component_uom_id: 'Units',
-            component_base_quantity: '12',
-            component_base_uom_id: 'Kg',
-            component_packaging_type_id: '1',
-            component_packaging_material: 'Glass',
-            component_unit_weight: '0.6',
-            weight_unit_measure_id: 'Kg',
-            percent_mechanical_pcr_content: '40',
-            sku_code: `${cmCode}-GAIA-001`,
-            sku_description: `GAIA SKU for ${cmCode}`,
-            cm_code: cmCode,
-            cm_description: cmDescription
-          }
+
         ];
         
         setTableData(placeholderData);
@@ -390,16 +406,6 @@ const GeneratePdf: React.FC = () => {
                         row.sku_code.toLowerCase().includes('int') ||
                         (row.sku_description && row.sku_description.toLowerCase().includes('internal'));
       passesFilters = passesFilters && !isInternal;
-    }
-    
-    // Filter by GAIA if checked
-    if (gaia && row.sku_code) {
-      // Assuming GAIA SKUs have a specific pattern or field
-      // You may need to adjust this logic based on your data structure
-      const isGaia = row.sku_code.toLowerCase().includes('gaia') || 
-                     (row.sku_description && row.sku_description.toLowerCase().includes('gaia')) ||
-                     (row.component_description && row.component_description.toLowerCase().includes('gaia'));
-      passesFilters = passesFilters && isGaia;
     }
     
     return passesFilters;
@@ -633,7 +639,6 @@ const GeneratePdf: React.FC = () => {
     console.log('Selected Component Packaging Type:', selectedComponentPackagingType);
     console.log('Selected SKU:', selectedSku);
     console.log('Exclude Internal:', excludeInternal);
-    console.log('GAIA:', gaia);
     console.log('Available periods:', periods);
     console.log('Available packaging types:', packagingTypes);
     console.log('Available component packaging types:', componentPackagingTypes);
@@ -645,7 +650,7 @@ const GeneratePdf: React.FC = () => {
     }
     
     // If we have real filters selected, try to fetch fresh data
-    if (selectedPeriod || selectedPackagingType || selectedComponentPackagingType || selectedSku || excludeInternal || gaia) {
+    if (selectedPeriod || selectedPackagingType || selectedComponentPackagingType || selectedSku || excludeInternal) {
       console.log('Filters applied, attempting to fetch fresh data...');
       // Trigger a refresh of component data with new filters
       // This will be handled by the useEffect that depends on cmCode
@@ -746,6 +751,7 @@ const GeneratePdf: React.FC = () => {
                      </select>
                    </div>
                  </li>
+
                                  <li>
                   <div className="fBold">Packaging Type</div>
                   <div className="form-control">
@@ -861,30 +867,7 @@ const GeneratePdf: React.FC = () => {
                           Exclude Internal
                         </label>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input
-                          type="checkbox"
-                          id="gaia"
-                          checked={gaia}
-                          onChange={(e) => setGaia(e.target.checked)}
-                          style={{
-                            width: '16px',
-                            height: '16px',
-                            cursor: 'pointer'
-                          }}
-                        />
-                        <label 
-                          htmlFor="gaia" 
-                          style={{ 
-                            margin: '0', 
-                            fontSize: '14px', 
-                            cursor: 'pointer',
-                            userSelect: 'none'
-                          }}
-                        >
-                          GAIA
-                        </label>
-                      </div>
+
                     </div>
                   </div>
                 </li>

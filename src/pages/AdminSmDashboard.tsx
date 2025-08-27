@@ -604,11 +604,9 @@ const AdminSmDashboard: React.FC = () => {
   // Handle file icon click to show signoff details
   const handleFileIconClick = async (cmCode: string) => {
     console.log('File icon clicked for CM Code:', cmCode);
-    console.log('Setting selectedCmCode to:', cmCode);
     setSelectedCmCode(cmCode);
     setShowSignoffModal(true);
     console.log('Modal should be open now, showSignoffModal:', true);
-    console.log('selectedCmCode after setState:', cmCode);
     setSignoffLoading(true);
     setSignoffError(null);
     setSignoffDetails([]);
@@ -627,9 +625,6 @@ const AdminSmDashboard: React.FC = () => {
     } else {
       console.log('Using selected period from dashboard filter for signoff details:', periodToUse);
     }
-
-    // Set the selected signoff period for display
-    setSelectedSignoffPeriod(periodToUse);
 
     // Fetch signoff details with the appropriate period
     await fetchSignoffDetails(cmCode, periodToUse);
@@ -1629,12 +1624,8 @@ const AdminSmDashboard: React.FC = () => {
             </button>
             
             <h2 style={{ marginTop: 0, marginBottom: '20px', color: '#333', paddingRight: '50px' }}>
-              Signoff Details for {selectedCmCode || 'Unknown CM Code'}
+              Signoff Details for {selectedCmCode}
             </h2>
-            {/* Debug info */}
-            <div style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>
-              CM Code: {selectedCmCode || 'Not set'} | Period: {selectedSignoffPeriod || 'Not set'}
-            </div>
             
             {signoffLoading && <Loader />}
             {signoffError && <p style={{ color: 'red' }}>{signoffError}</p>}
@@ -1667,7 +1658,7 @@ const AdminSmDashboard: React.FC = () => {
                       gridTemplateColumns: '1fr 1fr 1fr 1fr',
                       gap: '8px'
                     }}>
-                      {/* Email */}
+                      {/* Signoff By */}
                       <div style={{
                         background: '#ffffff',
                         padding: '6px',
@@ -1681,17 +1672,17 @@ const AdminSmDashboard: React.FC = () => {
                           gap: '4px',
                           marginBottom: '4px'
                         }}>
-                          <i className="ri-mail-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
+                          <i className="ri-user-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
                           <span style={{ fontSize: '10px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>
-                            Email
+                            Signoff By
                           </span>
                         </div>
                         <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>
-                          {record.email || 'N/A'}
+                          {record.signoff_by || 'N/A'}
                         </div>
                       </div>
 
-                      {/* Agreement ID */}
+                      {/* Signoff Date */}
                       <div style={{
                         background: '#ffffff',
                         padding: '6px',
@@ -1705,17 +1696,23 @@ const AdminSmDashboard: React.FC = () => {
                           gap: '4px',
                           marginBottom: '4px'
                         }}>
-                          <i className="ri-file-text-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
+                          <i className="ri-calendar-check-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
                           <span style={{ fontSize: '10px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>
-                            Agreement ID
+                            Signoff Date
                           </span>
                         </div>
                         <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>
-                          {record.agreement_id || 'N/A'}
+                          {record.signoff_date ? (
+                            new Date(record.signoff_date).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
+                            })
+                          ) : 'N/A'}
                         </div>
                       </div>
 
-                      {/* Status */}
+                      {/* Document URL */}
                       <div style={{
                         background: '#ffffff',
                         padding: '6px',
@@ -1729,13 +1726,31 @@ const AdminSmDashboard: React.FC = () => {
                           gap: '4px',
                           marginBottom: '4px'
                         }}>
-                          <i className="ri-checkbox-circle-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
+                          <i className="ri-file-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
                           <span style={{ fontSize: '10px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>
-                            Status
+                            Document
                           </span>
                         </div>
                         <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>
-                          {record.status || 'N/A'}
+                          {record.document_url ? (
+                            <a 
+                              href={record.document_url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              style={{
+                                color: '#007bff',
+                                textDecoration: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              <i className="ri-external-link-line" style={{ fontSize: '10px' }}></i>
+                              View Document
+                            </a>
+                          ) : (
+                            <span style={{ color: '#6c757d' }}>No document available</span>
+                          )}
                         </div>
                       </div>
 
@@ -1759,10 +1774,10 @@ const AdminSmDashboard: React.FC = () => {
                           </span>
                         </div>
                         <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>
-                          {record.periods ? (
+                          {record.period ? (
                             (() => {
                               // Convert period ID to readable format
-                              const periodId = record.periods.toString();
+                              const periodId = record.period;
                               const periodMap: { [key: string]: string } = {
                                 '1': 'July 2024 to June 2025',
                                 '2': 'July 2025 to June 2026',
@@ -1773,110 +1788,6 @@ const AdminSmDashboard: React.FC = () => {
                               return periodMap[periodId] || `Period ${periodId}`;
                             })()
                           ) : 'N/A'}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Additional Info Row */}
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr 1fr',
-                      gap: '8px',
-                      marginTop: '8px'
-                    }}>
-                      {/* Created Date */}
-                      <div style={{
-                        background: '#ffffff',
-                        padding: '6px',
-                        borderRadius: '4px',
-                        border: '1px solid #e9ecef',
-                        position: 'relative'
-                      }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          marginBottom: '4px'
-                        }}>
-                          <i className="ri-time-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
-                          <span style={{ fontSize: '10px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>
-                            Created
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>
-                          {record.created_at ? (
-                            new Date(record.created_at).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric'
-                            })
-                          ) : 'N/A'}
-                        </div>
-                      </div>
-
-                      {/* Adobe Status */}
-                      <div style={{
-                        background: '#ffffff',
-                        padding: '6px',
-                        borderRadius: '4px',
-                        border: '1px solid #e9ecef',
-                        position: 'relative'
-                      }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          marginBottom: '4px'
-                        }}>
-                          <i className="ri-adobe-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
-                          <span style={{ fontSize: '10px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>
-                            Adobe Status
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>
-                          {record.adobe_status || 'N/A'}
-                        </div>
-                      </div>
-
-                      {/* Signed PDF URL */}
-                      <div style={{
-                        background: '#ffffff',
-                        padding: '6px',
-                        borderRadius: '4px',
-                        border: '1px solid #e9ecef',
-                        position: 'relative'
-                      }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          marginBottom: '4px'
-                        }}>
-                          <i className="ri-file-pdf-line" style={{ color: '#30ea03', fontSize: '12px' }}></i>
-                          <span style={{ fontSize: '10px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>
-                            Signed PDF
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '12px', fontWeight: '500', color: '#333' }}>
-                          {record.signed_pdf_url ? (
-                            <a 
-                              href={record.signed_pdf_url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              style={{
-                                color: '#007bff',
-                                textDecoration: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}
-                            >
-                              <i className="ri-external-link-line" style={{ fontSize: '10px' }}></i>
-                              View PDF
-                            </a>
-                          ) : (
-                            <span style={{ color: '#6c757d' }}>Not available</span>
-                          )}
                         </div>
                       </div>
                     </div>

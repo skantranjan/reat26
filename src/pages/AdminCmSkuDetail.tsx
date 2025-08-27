@@ -654,12 +654,8 @@ const AdminCmSkuDetail: React.FC = () => {
 
   // Helper function to get SKU panel background color based on approval status
   const getSkuPanelBackgroundColor = (isApproved: number | boolean | undefined) => {
-    // Check if not approved (0, false, undefined) - keep original black for approved (1, true)
-    if (isApproved === 0 || isApproved === false) {
-      return '#721c24'; // Dark red for not approved SKUs
-    } else {
-      return '#000'; // Keep original black color for approved SKUs (1, true) and undefined
-    }
+    // Always return black for collapse bar background
+    return '#000';
   };
 
   // Update addComponentData period when selectedYears changes
@@ -4233,7 +4229,18 @@ const AdminCmSkuDetail: React.FC = () => {
                         padding: '8px 12px'
                       }}
                       onClick={() => {
-                        navigate(`/generate-pdf?cmCode=${encodeURIComponent(cmCode || '')}&cmDescription=${encodeURIComponent(cmDescription)}`);
+                        navigate(`/generate-pdf?cmCode=${encodeURIComponent(cmCode || '')}&cmDescription=${encodeURIComponent(cmDescription)}`, {
+                          state: {
+                            skuData: filteredSkuData,
+                            cmCode: cmCode,
+                            cmDescription: cmDescription,
+                            materialTypes: materialTypes,
+                            unitOfMeasureOptions: unitOfMeasureOptions,
+                            packagingLevelOptions: packagingLevelOptions,
+                            packagingMaterialOptions: packagingMaterialOptions,
+                            componentBaseUoms: componentBaseUoms
+                          }
+                        });
                       }}
                     >
                       <i className="ri-file-pdf-2-line" style={{ fontSize: 14, marginRight: '4px' }}></i>
@@ -4287,44 +4294,24 @@ const AdminCmSkuDetail: React.FC = () => {
                     <i className="ri-send-plane-2-line" style={{ marginLeft: 5 }} />
                   </button>
                 </div>
-                
+
                 {/* Professional Legend */}
                 <div style={{ 
                   marginBottom: '20px', 
                   padding: '16px 20px',
                   backgroundColor: '#f8f9fa',
-                  border: '1px solid #e9ecef',
+                  border: '1px solid #d1d5db',
                   borderRadius: '8px',
                   boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
                 }}>
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    marginBottom: '12px',
-                    borderBottom: '2px solid #dee2e6',
-                    paddingBottom: '8px'
-                  }}>
-                    <i className="ri-information-line" style={{ 
-                      fontSize: '18px', 
-                      color: '#495057', 
-                      marginRight: '8px' 
-                    }}></i>
-                    <h6 style={{ 
-                      margin: '0', 
-                      color: '#495057', 
-                      fontWeight: '600',
-                      fontSize: '14px'
-                    }}>
-                      Status Legend
-                    </h6>
-                  </div>
+                  
                   <div style={{ 
                     display: 'flex', 
                     flexWrap: 'wrap', 
                     gap: '16px',
                     fontSize: '12px'
                   }}>
-                    <div style={{ 
+                   <div style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
                       gap: '6px' 
@@ -4345,11 +4332,12 @@ const AdminCmSkuDetail: React.FC = () => {
                       <div style={{ 
                         width: '12px', 
                         height: '12px', 
-                        backgroundColor: '#dc3545', 
+                        backgroundColor: '#ffc107', 
                         borderRadius: '2px' 
                       }}></div>
-                      <span style={{ color: '#495057' }}>Pending Approval</span>
+                      <span style={{ color: '#495057' }}>Approval Pending </span>
                     </div>
+                    
                     <div style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
@@ -4358,23 +4346,10 @@ const AdminCmSkuDetail: React.FC = () => {
                       <div style={{ 
                         width: '12px', 
                         height: '12px', 
-                        backgroundColor: '#30ea03', 
+                        backgroundColor: 'red', 
                         borderRadius: '2px' 
                       }}></div>
-                      <span style={{ color: '#495057' }}>Active Status</span>
-                    </div>
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '6px' 
-                    }}>
-                      <div style={{ 
-                        width: '12px', 
-                        height: '12px', 
-                        backgroundColor: '#6c757d', 
-                        borderRadius: '2px' 
-                      }}></div>
-                      <span style={{ color: '#495057' }}>Inactive Status</span>
+                      <span style={{ color: '#495057' }}>Rejected</span>
                     </div>
                   </div>
                 </div>
@@ -4479,10 +4454,10 @@ const AdminCmSkuDetail: React.FC = () => {
                         borderRadius: 12, 
                         fontSize: 10, 
                         fontWeight: 'bold',
-                        background: sku.is_approved === 1 || sku.is_approved === true ? '#30ea03' : '#dc3545',
-                        color: sku.is_approved === 1 || sku.is_approved === true ? '#000' : '#fff'
+                        background: sku.is_approved === 1 || sku.is_approved === true ? '#30ea03' : '#ffc107',
+                        color: sku.is_approved === 1 || sku.is_approved === true ? '#000' : '#000'
                       }}>
-                        {sku.is_approved === 1 || sku.is_approved === true ? 'Approved' : 'Pending'}
+                        {sku.is_approved === 1 || sku.is_approved === true ? 'Approved' : 'Approval Pending'}
                       </span>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
@@ -5130,14 +5105,14 @@ const AdminCmSkuDetail: React.FC = () => {
                               {/* Approval status indicator */}
                               <span style={{ 
                                 marginLeft: 8, 
-                                padding: '2px 8px', 
+                                padding: '2px 16px', 
                                 borderRadius: 12, 
                                 fontSize: 10, 
                                 fontWeight: 'bold',
-                                background: sku.is_approved === 1 || sku.is_approved === true ? '#30ea03' : '#dc3545',
-                                color: sku.is_approved === 1 || sku.is_approved === true ? '#000' : '#fff'
+                                background: sku.is_approved === 1 || sku.is_approved === true ? '#30ea03' : '#ffc107',
+                                color: sku.is_approved === 1 || sku.is_approved === true ? '#000' : '#000'
                               }}>
-                                {sku.is_approved === 1 || sku.is_approved === true ? 'Approved' : 'Pending'}
+                                {sku.is_approved === 1 || sku.is_approved === true ? 'Approved' : 'Approval Pending'}
                               </span>
                             </span>
                             <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>

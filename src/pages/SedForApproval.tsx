@@ -8,6 +8,8 @@ const SedForApproval: React.FC = () => {
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pdfData, setPdfData] = useState<any>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [approvalDetails, setApprovalDetails] = useState<any>(null);
   
   // Get 3PM Code and Description from navigation state or URL parameters
   const cmCode = location.state?.cmCode || searchParams.get('cmCode') || '';
@@ -27,12 +29,10 @@ const SedForApproval: React.FC = () => {
     event.preventDefault();
     
     if (!email) {
-      alert('Please enter an email address');
       return;
     }
 
     if (!pdfData) {
-      alert('No PDF data available');
       return;
     }
 
@@ -67,15 +67,21 @@ const SedForApproval: React.FC = () => {
       const result = await response.json();
       
       if (result.success) {
-        alert(`PDF sent for approval successfully!\n\nResponse: ${JSON.stringify(result, null, 2)}`);
+        setApprovalDetails({
+          email: email,
+          cmCode: cmCode,
+          cmDescription: cmDescription,
+          timestamp: new Date().toLocaleString(),
+          period: pdfData.selectedPeriod || 'N/A'
+        });
         setEmail('');
+        setShowSuccessModal(true);
       } else {
         throw new Error(result.message || 'Unknown error occurred');
       }
       
     } catch (error) {
       console.error('Error sending for approval:', error);
-      alert(`Error sending for approval: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -189,7 +195,6 @@ const SedForApproval: React.FC = () => {
             );
 
             if (selectedData.length === 0) {
-              alert('No data available for PDF generation');
               return;
             }
 
@@ -259,13 +264,12 @@ const SedForApproval: React.FC = () => {
             setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000);
           });
         });
-      } catch (error) {
-        console.error('Error generating PDF:', error);
-        alert('Error generating PDF. Please try again.');
-      }
-    } else {
-      alert('No data available for PDF generation');
-    }
+             } catch (error) {
+         console.error('Error generating PDF:', error);
+       }
+         } else {
+       // No data available
+     }
   };
 
   return (
@@ -289,83 +293,17 @@ const SedForApproval: React.FC = () => {
         <div className="filters CMDetails">
           <div className="row">
             <div className="col-sm-12">
-              <ul style={{ display: 'flex', alignItems: 'center', padding: '6px 15px 8px' }}>
-                <li><strong>3PM Code: </strong> {cmCode}</li>
-                <li> | </li>
-                <li><strong>3PM Description: </strong> {cmDescription}</li>
-                <li> | </li>
-                <li><strong>Year: </strong> {pdfData?.selectedPeriod ? pdfData.selectedPeriod.split('-')[0] : new Date().getFullYear()}</li>
-              </ul>
+                             <ul style={{ display: 'flex', alignItems: 'center', padding: '6px 15px 8px' }}>
+                 <li><strong>3PM Code: </strong> {cmCode}</li>
+                 <li> | </li>
+                 <li><strong>3PM Description: </strong> {cmDescription}</li>
+               </ul>
             </div>
           </div>
         </div>
 
-        {/* PDF Display Section */}
-        {pdfData ? (
-          <div className="row">
-            <div className="col-12">
-              <div style={{ 
-                backgroundColor: '#fff',
-                borderRadius: '12px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                border: '1px solid #e9ecef',
-                padding: '20px',
-                marginBottom: '20px'
-              }}>
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center',
-                  marginBottom: '20px'
-                }}>
-                  <h3 style={{ margin: '0', color: '#495057' }}>Generated PDF Report</h3>
-                  <button
-                    onClick={handleGeneratePDF}
-                    style={{
-                      background: 'linear-gradient(135deg, #30ea03 0%, #28c402 100%)',
-                      color: '#000',
-                      border: 'none',
-                      padding: '10px 20px',
-                      borderRadius: '6px',
-                      fontWeight: '600',
-                      fontSize: '14px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      transition: 'all 0.3s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 6px 20px rgba(48, 234, 3, 0.3)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
-                  >
-                    <i className="ri-file-pdf-2-line"></i>
-                    Open PDF in New Tab
-                  </button>
-                </div>
-                
-                <div style={{
-                  backgroundColor: '#f8f9fa',
-                  border: '2px dashed #e9ecef',
-                  borderRadius: '8px',
-                  padding: '20px',
-                  textAlign: 'center',
-                  color: '#6c757d'
-                }}>
-                  <p style={{ margin: '0', fontSize: '14px', color: '#adb5bd' }}>
-                    Rows selected: {pdfData.selectedRows?.length || 0} | 
-                    Fields included: {pdfData.selectedFields?.length || 0}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
+        {/* No PDF Data Message */}
+        {!pdfData && (
           <div className="row">
             <div className="col-12">
               <div style={{ 
@@ -415,6 +353,42 @@ const SedForApproval: React.FC = () => {
                   }}>
                     Send PDF for Approval
                   </h3>
+                  
+                  {/* Open PDF Button */}
+                  <div style={{ 
+                    marginBottom: '24px',
+                    textAlign: 'center'
+                  }}>
+                    <button
+                      type="button"
+                      onClick={handleGeneratePDF}
+                      style={{
+                        background: 'linear-gradient(135deg, #30ea03 0%, #28c402 100%)',
+                        color: '#000',
+                        border: 'none',
+                        padding: '12px 24px',
+                        borderRadius: '8px',
+                        fontWeight: '600',
+                        fontSize: '14px',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        transition: 'all 0.3s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.boxShadow = '0 6px 20px rgba(48, 234, 3, 0.3)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                                         >
+                       <i className="ri-file-pdf-2-line"></i>
+                       View Generated PDF
+                     </button>
+                  </div>
                   
                   {/* Email Input Field */}
                   <div style={{ marginBottom: '32px' }}>
@@ -495,6 +469,151 @@ const SedForApproval: React.FC = () => {
           </div>
         )}
 
+        {/* Success Modal */}
+        {showSuccessModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 1000
+          }}>
+            <div style={{
+              backgroundColor: '#fff',
+              borderRadius: '16px',
+              padding: '32px',
+              maxWidth: '500px',
+              width: '90%',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.2)',
+              textAlign: 'center'
+            }}>
+              {/* Success Icon */}
+              <div style={{
+                width: '80px',
+                height: '80px',
+                borderRadius: '50%',
+                backgroundColor: '#30ea03',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                margin: '0 auto 24px',
+                animation: 'scaleIn 0.3s ease-out'
+              }}>
+                <i className="ri-check-line" style={{
+                  fontSize: '40px',
+                  color: '#fff'
+                }}></i>
+              </div>
+
+              {/* Success Title */}
+              <h2 style={{
+                margin: '0 0 16px 0',
+                color: '#28a745',
+                fontSize: '24px',
+                fontWeight: '700'
+              }}>
+                PDF Sent Successfully!
+              </h2>
+
+              {/* Success Message */}
+              <p style={{
+                margin: '0 0 24px 0',
+                color: '#6c757d',
+                fontSize: '16px',
+                lineHeight: '1.5'
+              }}>
+                Your PDF has been sent for approval
+              </p>
+
+              {/* Details */}
+              <div style={{
+                backgroundColor: '#f8f9fa',
+                borderRadius: '12px',
+                padding: '20px',
+                marginBottom: '24px',
+                textAlign: 'left'
+              }}>
+                <div style={{ marginBottom: '12px' }}>
+                  <strong style={{ color: '#495057' }}>Sent to:</strong> {approvalDetails?.email}
+                </div>
+                <div style={{ marginBottom: '12px' }}>
+                  <strong style={{ color: '#495057' }}>3PM Code:</strong> {approvalDetails?.cmCode}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                justifyContent: 'center',
+                flexWrap: 'wrap'
+              }}>
+                <button
+                  onClick={() => setShowSuccessModal(false)}
+                  style={{
+                    background: 'linear-gradient(135deg, #30ea03 0%, #28c402 100%)',
+                    color: '#000',
+                    border: 'none',
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    minWidth: '120px'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(48, 234, 3, 0.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
+                  <i className="ri-check-line" style={{ marginRight: '8px' }}></i>
+                  Great!
+                </button>
+                
+                <button
+                  onClick={() => {
+                    setShowSuccessModal(false);
+                    setEmail('');
+                  }}
+                  style={{
+                    background: '#6c757d',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    minWidth: '120px'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(108, 117, 125, 0.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
+                  <i className="ri-send-plane-2-line" style={{ marginRight: '8px' }}></i>
+                  Send Another
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Enhanced styles */}
         <style>{`
           .spinning {
@@ -504,6 +623,17 @@ const SedForApproval: React.FC = () => {
           @keyframes spin {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
+          }
+          
+          @keyframes scaleIn {
+            from { 
+              transform: scale(0.8);
+              opacity: 0;
+            }
+            to { 
+              transform: scale(1);
+              opacity: 1;
+            }
           }
           
           .filters.CMDetails {

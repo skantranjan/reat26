@@ -254,6 +254,10 @@ const CmSkuDetail: React.FC = () => {
   const [pendingComponentStatus, setPendingComponentStatus] = useState<boolean>(false);    // New component status
   const [pendingComponentSkuCode, setPendingComponentSkuCode] = useState<string>('');     // SKU code for component
 
+  // Approval modal states
+  const [showApprovalConfirm, setShowApprovalConfirm] = useState(false);    // Approval confirmation modal
+  const [pendingApprovalAction, setPendingApprovalAction] = useState<'approve' | 'reject' | null>(null); // Action to be performed
+
   // ===== FILTERING AND TAB STATE =====
   // State for managing filters and tab navigation
   const [selectedMaterialType, setSelectedMaterialType] = useState<string>('packaging');   // Material type filter (default: packaging)
@@ -1006,6 +1010,58 @@ const CmSkuDetail: React.FC = () => {
   const handleComponentIsActiveChange = (rowId: number, currentStatus: boolean) => {
     setComponentRows(prev => prev.map(row => row.id === rowId ? { ...row, is_active: !currentStatus } : row));
     // Optionally, send PATCH to backend for component/row status here
+  };
+
+  // Handler to update approval status
+  const handleApprovalChange = async (skuId: number, newApprovalStatus: boolean) => {
+    try {
+      // Optimistically update UI
+      setSkuData(prev => prev.map(sku => sku.id === skuId ? { ...sku, is_approved: newApprovalStatus ? 1 : 0 } : sku));
+      
+      // Send PATCH request to update approval status
+      const result = await apiPatch('/update-approval-status', { 
+        sku_id: skuId, 
+        is_approved: newApprovalStatus ? 1 : 0 
+      });
+      
+      if (!result.success) {
+        throw new Error('API returned unsuccessful response for approval update');
+      }
+      
+      console.log('✅ SKU approval status updated successfully');
+      console.log('📊 Approval data:', { skuId, newApprovalStatus, result });
+    } catch (err) {
+      // If error, revert UI change
+      setSkuData(prev => prev.map(sku => sku.id === skuId ? { ...sku, is_approved: newApprovalStatus ? 0 : 1 } : sku));
+      showError('Failed to update approval status. Please try again.');
+      console.log('❌ Approval update failed:', { skuId, newApprovalStatus, error: err });
+    }
+  };
+
+  // Handler for approval button click (show modal)
+  const handleApprovalClick = (skuId: number, action: 'approve' | 'reject') => {
+    console.log('🔍 Approval button clicked:', { skuId, action });
+    setPendingSkuId(skuId);
+    setPendingApprovalAction(action);
+    setShowApprovalConfirm(true);
+  };
+
+  // Handler for approval confirmation
+  const handleApprovalConfirm = async () => {
+    if (pendingSkuId !== null && pendingApprovalAction !== null) {
+      const newStatus = pendingApprovalAction === 'approve';
+      await handleApprovalChange(pendingSkuId, newStatus);
+    }
+    setShowApprovalConfirm(false);
+    setPendingSkuId(null);
+    setPendingApprovalAction(null);
+  };
+
+  // Handler for approval modal cancel
+  const handleApprovalCancel = () => {
+    setShowApprovalConfirm(false);
+    setPendingSkuId(null);
+    setPendingApprovalAction(null);
   };
 
   // Handler for header button click (show modal)
@@ -1797,7 +1853,6 @@ const CmSkuDetail: React.FC = () => {
       console.log('Filtered components (only checked):', filteredComponents);
       console.log('Filtered components length:', filteredComponents.length);
       
-
       
       // Only send skutype if checkbox is checked (user wants reference SKU)
       const skutypeParam = showSkuTypeSection ? addSkuType : '';
@@ -4254,7 +4309,7 @@ const CmSkuDetail: React.FC = () => {
                       <span>Copy Data</span> <i className="ri-file-copy-line"></i>
                     </button>
                   </li> */}
-                  <li style={{ display: 'flex', alignItems: 'center' }}>
+                  {/* <li style={{ display: 'flex', alignItems: 'center' }}>
                     <button
                       className="btnCommon btnGreen filterButtons"
                       style={{ minWidth: 110, fontWeight: 600, marginRight: 8, marginTop: 0, fontSize: '13px', padding: '8px 12px' }}
@@ -4266,7 +4321,7 @@ const CmSkuDetail: React.FC = () => {
                      <span>GAIA</span> 
                      <i className="ri-global-line" style={{ marginLeft: 5 }}></i>
                     </button>
-                  </li>
+                  </li> */}
                   <li style={{ display: 'flex', alignItems: 'center' }}>
                     <button
                       className="btnCommon btnGreen filterButtons"
@@ -4298,7 +4353,7 @@ const CmSkuDetail: React.FC = () => {
                       }}
                     >
                       <i className="ri-file-pdf-2-line" style={{ fontSize: 14, marginRight: '4px' }}></i>
-                      <span>Generate PDF</span>
+                      <span>View PDF</span>
                     </button>
                   </li>
                 </ul>
@@ -4354,38 +4409,18 @@ const CmSkuDetail: React.FC = () => {
                   marginBottom: '20px', 
                   padding: '16px 20px',
                   backgroundColor: '#f8f9fa',
-                  border: '1px solid #e9ecef',
+                  border: '1px solid #d1d5db',
                   borderRadius: '8px',
                   boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
                 }}>
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    marginBottom: '12px',
-                    borderBottom: '2px solid #dee2e6',
-                    paddingBottom: '8px'
-                  }}>
-                    <i className="ri-information-line" style={{ 
-                      fontSize: '18px', 
-                      color: '#495057', 
-                      marginRight: '8px' 
-                    }}></i>
-                    <h6 style={{ 
-                      margin: '0', 
-                      color: '#495057', 
-                      fontWeight: '600',
-                      fontSize: '14px'
-                    }}>
-                      Status Legend
-                    </h6>
-                  </div>
+                  
                   <div style={{ 
                     display: 'flex', 
                     flexWrap: 'wrap', 
                     gap: '16px',
                     fontSize: '12px'
                   }}>
-                    <div style={{ 
+                   <div style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
                       gap: '6px' 
@@ -4406,11 +4441,12 @@ const CmSkuDetail: React.FC = () => {
                       <div style={{ 
                         width: '12px', 
                         height: '12px', 
-                        backgroundColor: '#dc3545', 
+                        backgroundColor: '#ffc107', 
                         borderRadius: '2px' 
                       }}></div>
-                      <span style={{ color: '#495057' }}>Pending Approval</span>
+                      <span style={{ color: '#495057' }}>Approval Pending </span>
                     </div>
+                    
                     <div style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
@@ -4419,23 +4455,10 @@ const CmSkuDetail: React.FC = () => {
                       <div style={{ 
                         width: '12px', 
                         height: '12px', 
-                        backgroundColor: '#30ea03', 
+                        backgroundColor: 'red', 
                         borderRadius: '2px' 
                       }}></div>
-                      <span style={{ color: '#495057' }}>Active Status</span>
-                    </div>
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '6px' 
-                    }}>
-                      <div style={{ 
-                        width: '12px', 
-                        height: '12px', 
-                        backgroundColor: '#6c757d', 
-                        borderRadius: '2px' 
-                      }}></div>
-                      <span style={{ color: '#495057' }}>Inactive Status</span>
+                      <span style={{ color: '#495057' }}>Rejected</span>
                     </div>
                   </div>
                 </div>
@@ -4546,7 +4569,58 @@ const CmSkuDetail: React.FC = () => {
                         {sku.is_approved === 1 || sku.is_approved === true ? 'Approved' : 'Pending'}
                       </span>
                     </span>
-                    <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                    <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {/* Approve Button - Only show if not already approved */}
+                      {!(sku.is_approved === 1 || sku.is_approved === true) && (
+                        <button
+                          style={{
+                            background: '#28a745',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: 4,
+                            fontWeight: 'bold',
+                            padding: '3px 12px',
+                            cursor: 'pointer',
+                            minWidth: 70,
+                            height: 24,
+                            fontSize: 11,
+                          }}
+                          onClick={e => {
+                            e.stopPropagation();
+                            handleApprovalClick(sku.id, 'approve');
+                          }}
+                          title="Approve SKU"
+                        >
+                          Approve
+                        </button>
+                      )}
+                      
+                      {/* Reject Button - Only show if not already rejected */}
+                      {!(sku.is_approved === 0 || sku.is_approved === false) && (
+                        <button
+                          style={{
+                            background: '#dc3545',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: 4,
+                            fontWeight: 'bold',
+                            padding: '3px 12px',
+                            cursor: 'pointer',
+                            minWidth: 70,
+                            height: 24,
+                            fontSize: 11,
+                          }}
+                          onClick={e => {
+                            e.stopPropagation();
+                            handleApprovalClick(sku.id, 'reject');
+                          }}
+                          title="Reject SKU"
+                        >
+                          Reject
+                        </button>
+                      )}
+                      
+                      {/* Active/Inactive Button */}
                       <button
                         style={{
                           background: sku.is_active ? '#30ea03' : '#ccc',
@@ -4556,10 +4630,8 @@ const CmSkuDetail: React.FC = () => {
                           fontWeight: 'bold',
                           padding: '3px 18px',
                           cursor: 'pointer',
-                          marginLeft: 8,
                           minWidth: 90,
                           height: 24,
-                          margin: '5px 0',
                           fontSize: 12,
                         }}
                         onClick={e => {
@@ -4567,7 +4639,7 @@ const CmSkuDetail: React.FC = () => {
                           handleHeaderStatusClick(sku.id, sku.is_active);
                         }}
                       >
-                                                        {sku.is_active ? 'Active' : 'Inactive'}
+                        {sku.is_active ? 'Active' : 'Inactive'}
                       </button>
                     </span>
                   </div>
@@ -5221,8 +5293,7 @@ const CmSkuDetail: React.FC = () => {
                                   minWidth: 90,
                                   height: 24,
                                   margin: '5px 0px',
-                                  fontSize: 12,
-                                 
+                                  fontSize: 12, 
                                 }}
                                 onClick={e => {
                                   e.stopPropagation();
@@ -8909,6 +8980,14 @@ const CmSkuDetail: React.FC = () => {
         message={pendingComponentStatus ? 'Are you sure you want to activate this component?' : 'Are you sure you want to deactivate this component?'}
         onConfirm={handleComponentConfirmStatusChange}
         onCancel={handleComponentCancelStatusChange}
+      />
+
+      {/* Approval Confirmation Modal */}
+      <ConfirmModal
+        show={showApprovalConfirm}
+        message={pendingApprovalAction === 'approve' ? 'Are you sure you want to approve this SKU?' : 'Are you sure you want to reject this SKU?'}
+        onConfirm={handleApprovalConfirm}
+        onCancel={handleApprovalCancel}
       />
 
 

@@ -1836,15 +1836,7 @@ const AdminSmDashboard: React.FC = () => {
                     </div>
 
                     {/* Additional Details */}
-                    <div style={{
-                      marginTop: '12px',
-                      padding: '8px',
-                      background: '#f8f9fa',
-                      borderRadius: '4px',
-                      border: '1px solid #e9ecef'
-                    }}>
-                      {/* Additional details can be added here in the future if needed */}
-                    </div>
+                  
                   </div>
                 ))}
               </div>

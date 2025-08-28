@@ -216,6 +216,7 @@ const AdminCmSkuDetail: React.FC = () => {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);      // Selected file for upload
   const [uploadLoading, setUploadLoading] = useState(false);                // Upload progress state
   const [exportLoading, setExportLoading] = useState(false);                // Export to Excel loading state
+  const [approvalLoading, setApprovalLoading] = useState(false);           // Send for Approval loading state
   const [uploadError, setUploadError] = useState('');                       // Upload error message
   const [uploadSuccess, setUploadSuccess] = useState('');                   // Upload success message
   const [copyFromPeriod, setCopyFromPeriod] = useState<string>('');        // Source period for copy
@@ -966,6 +967,8 @@ const AdminCmSkuDetail: React.FC = () => {
     };
     fetchDirectMasterData();
   }, []);
+
+
 
   // Handler to update is_active status using Universal API
   const handleIsActiveChange = async (skuId: number, currentStatus: boolean) => {
@@ -3919,6 +3922,8 @@ const AdminCmSkuDetail: React.FC = () => {
     }
   };
 
+
+
   const handleComponentStatusChange = async (mappingId: number, newStatus: boolean, skuCode?: string) => {
     console.log('🔍 handleComponentStatusChange called with:', { mappingId, newStatus, skuCode });
     
@@ -4270,28 +4275,50 @@ const AdminCmSkuDetail: React.FC = () => {
                   justifyContent: 'flex-end', 
                   marginBottom: '16px'
                 }}>
-                  <button className="add-sku-btn btnCommon btnGreen filterButtons"
-                    style={{
-                      background: '#30ea03',
-                      color: '#000',
-                      border: 'none',
-                      borderRadius: 6,
-                      fontWeight: 'bold',
-                      padding: '6px 12px',
-                      fontSize: 13,
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      minWidth: 110
-                    }}
-                    title="Send for Approval"
-                    onClick={() => {
-                      navigate(`/sedforapproval?cmCode=${encodeURIComponent(cmCode || '')}&cmDescription=${encodeURIComponent(cmDescription)}`);
+                                      <button className="add-sku-btn btnCommon btnGreen filterButtons"
+                      style={{
+                        background: approvalLoading ? '#ccc' : '#30ea03',
+                        color: '#000',
+                        border: 'none',
+                        borderRadius: 6,
+                        fontWeight: 'bold',
+                        padding: '6px 12px',
+                        fontSize: 13,
+                        cursor: approvalLoading ? 'not-allowed' : 'pointer',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        minWidth: 110
+                      }}
+                      title="Send for Approval"
+                      disabled={approvalLoading}
+                    onClick={async () => {
+                      try {
+                        setApprovalLoading(true);
+                        console.log('Send for Approval clicked - making API call...');
+                        
+                        // Make API call to sendfor-approval
+                        const result = await apiPost('/sendfor-approval', {
+                          cm_code: cmCode || ''
+                        });
+                        console.log('API Response:', result);
+                        
+                        if (result.success) {
+                          // Show success message
+                          alert('Approval request sent successfully!');
+                        } else {
+                          throw new Error(result.message || 'Failed to process approval request');
+                        }
+                      } catch (error) {
+                        console.error('Error sending approval request:', error);
+                        alert('Failed to send approval request: ' + (error instanceof Error ? error.message : 'Unknown error'));
+                      } finally {
+                        setApprovalLoading(false);
+                      }
                     }}
                   >
-                    <span>Send for Approval</span>
-                    <i className="ri-send-plane-2-line" style={{ marginLeft: 5 }} />
+                    <span>{approvalLoading ? 'Sending...' : 'Send for Approval'}</span>
+                    <i className={approvalLoading ? 'ri-loader-4-line' : 'ri-send-plane-2-line'} style={{ marginLeft: 5, animation: approvalLoading ? 'spin 1s linear infinite' : 'none' }} />
                   </button>
                 </div>
 
@@ -4454,10 +4481,10 @@ const AdminCmSkuDetail: React.FC = () => {
                         borderRadius: 12, 
                         fontSize: 10, 
                         fontWeight: 'bold',
-                        background: sku.is_approved === 1 || sku.is_approved === true ? '#30ea03' : '#ffc107',
-                        color: sku.is_approved === 1 || sku.is_approved === true ? '#000' : '#000'
+                        background: sku.is_approved === 1 || sku.is_approved === true ? '#30ea03' : sku.is_approved === 3 ? '#dc3545' : '#ffc107',
+                        color: sku.is_approved === 1 || sku.is_approved === true ? '#000' : sku.is_approved === 3 ? '#fff' : '#000'
                       }}>
-                        {sku.is_approved === 1 || sku.is_approved === true ? 'Approved' : 'Approval Pending'}
+                        {sku.is_approved === 1 || sku.is_approved === true ? 'Approved' : sku.is_approved === 3 ? 'Rejected' : 'Approval Pending'}
                       </span>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
@@ -4481,7 +4508,7 @@ const AdminCmSkuDetail: React.FC = () => {
                           handleHeaderStatusClick(sku.id, sku.is_active);
                         }}
                       >
-                                                        {sku.is_active ? 'Active' : 'Inactive'}
+                        {sku.is_active ? 'Active' : 'Inactive'}
                       </button>
                     </span>
                   </div>
@@ -5109,10 +5136,10 @@ const AdminCmSkuDetail: React.FC = () => {
                                 borderRadius: 12, 
                                 fontSize: 10, 
                                 fontWeight: 'bold',
-                                background: sku.is_approved === 1 || sku.is_approved === true ? '#30ea03' : '#ffc107',
-                                color: sku.is_approved === 1 || sku.is_approved === true ? '#000' : '#000'
+                                background: sku.is_approved === 1 || sku.is_approved === true ? '#30ea03' : sku.is_approved === 3 ? '#dc3545' : '#ffc107',
+                                color: sku.is_approved === 1 || sku.is_approved === true ? '#000' : sku.is_approved === 3 ? '#fff' : '#000'
                               }}>
-                                {sku.is_approved === 1 || sku.is_approved === true ? 'Approved' : 'Approval Pending'}
+                                {sku.is_approved === 1 || sku.is_approved === true ? 'Approved' : sku.is_approved === 3 ? 'Rejected' : 'Approval Pending'}
                               </span>
                             </span>
                             <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
@@ -5211,11 +5238,32 @@ const AdminCmSkuDetail: React.FC = () => {
                                       minWidth: 110
                                     }}
                                     title="Send for Approval"
-                                    onClick={() => {
+                                    onClick={async () => {
                                       if (!sku.is_active) {
                                         setShowInactiveModal(true);
                                       } else {
-                                        navigate(`/sedforapproval?cmCode=${encodeURIComponent(cmCode || '')}&cmDescription=${encodeURIComponent(cmDescription)}`);
+                                        try {
+                                          setApprovalLoading(true);
+                                          console.log('Send for Approval clicked for SKU:', sku.sku_code, '- making API call...');
+                                          
+                                          // Make API call to sendfor-approval
+                                          const result = await apiPost('/sendfor-approval', {
+                                            cm_code: cmCode || ''
+                                          });
+                                          console.log('API Response:', result);
+                                          
+                                          if (result.success) {
+                                            // Show success message
+                                            alert('Approval request sent successfully!');
+                                          } else {
+                                            throw new Error(result.message || 'Failed to process approval request');
+                                          }
+                                        } catch (error) {
+                                          console.error('Error sending approval request:', error);
+                                          alert('Failed to send approval request: ' + (error instanceof Error ? error.message : 'Unknown error'));
+                                        } finally {
+                                          setApprovalLoading(false);
+                                        }
                                       }
                                     }}
                                   >

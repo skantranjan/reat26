@@ -8,6 +8,7 @@ import EditComponentModal from '../../components/EditComponentModal/EditComponen
 import { Collapse } from 'react-collapse';
 import * as ExcelJS from 'exceljs';
 import { apiGet, apiPost, apiPut, apiPatch, apiPostFormData, apiPutFormData } from '../../utils/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 // Add CSS for spinning loader
 const spinningStyle = {
@@ -196,6 +197,9 @@ const CmSkuDetail: React.FC = () => {
   const cmDescription = location.state?.cmDescription || '';  // Component Master description
   const status = location.state?.status || '';       // Status passed from previous page
   const navigate = useNavigate();                    // Navigation function
+  
+  // Get authenticated user information
+  const { user } = useAuth();
 
   // Log the cmCode parameter for debugging
   console.log('CmSkuDetail component loaded with cmCode:', cmCode);
@@ -408,8 +412,25 @@ const CmSkuDetail: React.FC = () => {
         
         // Update all states from consolidated response
         if (result.data.skus) {
-          setSkuData(result.data.skus);
-          //console.log('SKUs loaded from universal API:', result.data.skus.length);
+          // Process SKU data to ensure proper approval status handling
+          const processedSkus = result.data.skus.map((sku: any) => ({
+            ...sku,
+            // Ensure is_approved is always a number: 0, 1, or 2
+            is_approved: typeof sku.is_approved === 'boolean' 
+              ? (sku.is_approved ? 1 : 0) 
+              : typeof sku.is_approved === 'string' 
+                ? parseInt(sku.is_approved) || 0
+                : Number(sku.is_approved) || 0
+          }));
+          
+          console.log('SKUs loaded from universal API:', processedSkus.length);
+          console.log('Approval status mapping:', processedSkus.map(s => ({ 
+            sku_code: s.sku_code, 
+            is_approved: s.is_approved, 
+            type: typeof s.is_approved 
+          })));
+          
+          setSkuData(processedSkus);
         }
         
         if (result.data.descriptions) {
@@ -515,8 +536,25 @@ const CmSkuDetail: React.FC = () => {
     try {
       const data = await fetchDashboardData(['skus']);
       if (data && data.skus) {
-        setSkuData(data.skus);
-       // console.log('SKU details loaded from universal API');
+        // Process SKU data to ensure proper approval status handling
+        const processedSkus = data.skus.map((sku: any) => ({
+          ...sku,
+          // Ensure is_approved is always a number: 0, 1, or 2
+          is_approved: typeof sku.is_approved === 'boolean' 
+            ? (sku.is_approved ? 1 : 0) 
+            : typeof sku.is_approved === 'string' 
+              ? parseInt(sku.is_approved) || 0
+              : Number(sku.is_approved) || 0
+        }));
+        
+        console.log('SKU details loaded from universal API');
+        console.log('Approval status in fetchSkuDetails:', processedSkus.map(s => ({ 
+          sku_code: s.sku_code, 
+          is_approved: s.is_approved, 
+          type: typeof s.is_approved 
+        })));
+        
+        setSkuData(processedSkus);
       }
     } catch (err) {
       console.error('Error fetching SKU details:', err);
@@ -662,13 +700,31 @@ const CmSkuDetail: React.FC = () => {
     return yearOption ? yearOption.period : '';
   };
 
+  // Helper function to normalize approval status to ensure it's always 0, 1, or 2
+  const normalizeApprovalStatus = (isApproved: number | boolean | undefined): number => {
+    if (typeof isApproved === 'boolean') {
+      return isApproved ? 1 : 0;
+    } else if (typeof isApproved === 'string') {
+      const parsed = parseInt(isApproved);
+      return isNaN(parsed) ? 0 : parsed;
+    } else if (typeof isApproved === 'number') {
+      return isApproved;
+    } else {
+      return 0; // Default to pending for undefined/null
+    }
+  };
+
   // Helper function to get SKU panel background color based on approval status
   const getSkuPanelBackgroundColor = (isApproved: number | boolean | undefined) => {
-    // Check if not approved (0, false, undefined) - keep original black for approved (1, true)
-    if (isApproved === 0 || isApproved === false) {
-      return '#721c24'; // Dark red for not approved SKUs
+    const normalizedStatus = normalizeApprovalStatus(isApproved);
+    
+    // Check approval status: 0 = pending, 1 = approved, 2 = rejected
+    if (normalizedStatus === 1) {
+      return '#000'; // Black for approved SKUs
+    } else if (normalizedStatus === 2) {
+      return '#721c24'; // Dark red for rejected SKUs
     } else {
-      return '#000'; // Keep original black color for approved SKUs (1, true) and undefined
+      return '#721c24'; // Dark red for pending SKUs (0, false, undefined)
     }
   };
 
@@ -1015,13 +1071,23 @@ const CmSkuDetail: React.FC = () => {
   // Handler to update approval status
   const handleApprovalChange = async (skuId: number, newApprovalStatus: boolean) => {
     try {
+      // Find the SKU data to get sku_code and cm_code
+      const sku = skuData.find(s => s.id === skuId);
+      if (!sku) {
+        throw new Error('SKU not found');
+      }
+
+      // Determine approval value: 1 for approve, 2 for reject
+      const approvalValue = newApprovalStatus ? 1 : 2;
+      
       // Optimistically update UI
       setSkuData(prev => prev.map(sku => sku.id === skuId ? { ...sku, is_approved: newApprovalStatus ? 1 : 0 } : sku));
       
-      // Send PATCH request to update approval status
-      const result = await apiPatch('/update-approval-status', { 
-        sku_id: skuId, 
-        is_approved: newApprovalStatus ? 1 : 0 
+      // Send POST request to new approval API
+      const result = await apiPost('/skuapproval', { 
+        sku_code: sku.sku_code,
+        cm_code: sku.cm_code,
+        is_approved: approvalValue
       });
       
       if (!result.success) {
@@ -1029,7 +1095,7 @@ const CmSkuDetail: React.FC = () => {
       }
       
       console.log('✅ SKU approval status updated successfully');
-      console.log('📊 Approval data:', { skuId, newApprovalStatus, result });
+      console.log('📊 Approval data:', { skuId, sku_code: sku.sku_code, cm_code: sku.cm_code, approvalValue, result });
     } catch (err) {
       // If error, revert UI change
       setSkuData(prev => prev.map(sku => sku.id === skuId ? { ...sku, is_approved: newApprovalStatus ? 0 : 1 } : sku));
@@ -1869,7 +1935,8 @@ const CmSkuDetail: React.FC = () => {
             formulation_reference: addSkuFormulationReference,
             skutype: skutypeBody,  // Only send if checkbox is checked
             bulk_expert: addSkuDropdownValue,  // Add bulk_expert to sku_data as well
-            is_approved: 0  // Add is_approved parameter with value 0
+            is_approved: 0,  // Add is_approved parameter with value 0
+            user_id: user?.id || 1  // Add logged-in user ID
           },
           components: filteredComponents.map(component => ({
             component_code: component.component_code,
@@ -1916,7 +1983,8 @@ const CmSkuDetail: React.FC = () => {
           formulation_reference: addSkuFormulationReference,
           skutype: skutypeBody,
           bulk_expert: addSkuDropdownValue,
-          is_approved: 0
+          is_approved: 0,
+          user_id: user?.id || 1
         },
         components: filteredComponents.map(component => ({
           component_code: component.component_code,
@@ -1983,7 +2051,7 @@ const CmSkuDetail: React.FC = () => {
         cm_code: cmCode,
         cm_description: cmDescription,
         is_active: true, // assuming new SKUs are active
-        created_by: 'system', // or use actual user if available
+        created_by: user?.username || user?.id?.toString() || 'system', // Use actual logged-in user
         created_date: new Date().toISOString()
       });
       if (!auditResult.success) {
@@ -2396,7 +2464,7 @@ const CmSkuDetail: React.FC = () => {
         cm_code: cmCode,
         cm_description: cmDescription,
         is_active: true, // or use actual value if available
-        created_by: 'system', // or use actual user if available
+        created_by: user?.username || user?.id?.toString() || 'system', // Use actual logged-in user
         created_date: new Date().toISOString()
       });
       if (!auditResult.success) {
@@ -3283,8 +3351,8 @@ const CmSkuDetail: React.FC = () => {
             weight_unit_measure_id: Number(addComponentData.componentWeightUnitOfMeasure) || 0,
             percent_mechanical_pcr_content: Number(addComponentData.percentPostConsumer) || 0,
             percent_bio_sourced: Number(addComponentData.percentBioSourced) || 0,
-            user_id: 1,
-            created_by: 1,
+            user_id: user?.id || 1, // Use actual logged-in user ID
+            created_by: user?.id || 1, // Use actual logged-in user ID
             is_active: true
           };
         
@@ -3440,7 +3508,7 @@ const CmSkuDetail: React.FC = () => {
             'SKU Type': sku.skutype || '',
             'Bulk/Expert': sku.bulk_expert || '',
             'Is Active': sku.is_active ? 'Yes' : 'No',
-            'Is Approved': sku.is_approved === 1 || sku.is_approved === true ? 'Yes' : 'No',
+            'Is Approved': sku.is_approved === 1 ? 'Approved' : sku.is_approved === 2 ? 'Rejected' : 'Pending',
             'Created By': sku.created_by || '',
             'Created Date': sku.created_date ? new Date(sku.created_date).toLocaleDateString() : '',
             'Status': 'SKU Available - No Components'
@@ -4563,15 +4631,15 @@ const CmSkuDetail: React.FC = () => {
                         borderRadius: 12, 
                         fontSize: 10, 
                         fontWeight: 'bold',
-                        background: sku.is_approved === 1 || sku.is_approved === true ? '#30ea03' : '#dc3545',
-                        color: sku.is_approved === 1 || sku.is_approved === true ? '#000' : '#fff'
+                        background: normalizeApprovalStatus(sku.is_approved) === 1 ? '#30ea03' : normalizeApprovalStatus(sku.is_approved) === 2 ? '#dc3545' : '#ffc107',
+                        color: normalizeApprovalStatus(sku.is_approved) === 1 ? '#000' : normalizeApprovalStatus(sku.is_approved) === 2 ? '#fff' : '#000'
                       }}>
-                        {sku.is_approved === 1 || sku.is_approved === true ? 'Approved' : 'Pending'}
+                        {normalizeApprovalStatus(sku.is_approved) === 1 ? 'Approved' : normalizeApprovalStatus(sku.is_approved) === 2 ? 'Rejected' : 'Approval Pending'}
                       </span>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {/* Approve Button - Only show if not already approved */}
-                      {!(sku.is_approved === 1 || sku.is_approved === true) && (
+                      {/* Approve Button - Show if pending or rejected (to change status) */}
+                      {(normalizeApprovalStatus(sku.is_approved) === 0 || normalizeApprovalStatus(sku.is_approved) === 2) && (
                         <button
                           style={{
                             background: '#28a745',
@@ -4595,8 +4663,8 @@ const CmSkuDetail: React.FC = () => {
                         </button>
                       )}
                       
-                      {/* Reject Button - Only show if not already rejected */}
-                      {!(sku.is_approved === 0 || sku.is_approved === false) && (
+                      {/* Reject Button - Show if pending or approved (to change status) */}
+                      {(normalizeApprovalStatus(sku.is_approved) === 0 || normalizeApprovalStatus(sku.is_approved) === 1) && (
                         <button
                           style={{
                             background: '#dc3545',
@@ -5273,10 +5341,10 @@ const CmSkuDetail: React.FC = () => {
                                 borderRadius: 12, 
                                 fontSize: 10, 
                                 fontWeight: 'bold',
-                                background: sku.is_approved === 1 || sku.is_approved === true ? '#30ea03' : '#dc3545',
-                                color: sku.is_approved === 1 || sku.is_approved === true ? '#000' : '#fff'
+                                background: normalizeApprovalStatus(sku.is_approved) === 1 ? '#30ea03' : normalizeApprovalStatus(sku.is_approved) === 2 ? '#dc3545' : '#ffc107',
+                                color: normalizeApprovalStatus(sku.is_approved) === 1 ? '#000' : normalizeApprovalStatus(sku.is_approved) === 2 ? '#fff' : '#000'
                               }}>
-                                {sku.is_approved === 1 || sku.is_approved === true ? 'Approved' : 'Pending'}
+                                {normalizeApprovalStatus(sku.is_approved) === 1 ? 'Approved' : normalizeApprovalStatus(sku.is_approved) === 2 ? 'Rejected' : 'Approval Pending'}
                               </span>
                             </span>
                             <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>

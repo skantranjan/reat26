@@ -8,6 +8,7 @@ import EditComponentModal from '../components/EditComponentModal/EditComponentMo
 import { Collapse } from 'react-collapse';
 import * as ExcelJS from 'exceljs';
 import { apiGet, apiPost, apiPut, apiPatch, apiPostFormData, apiPutFormData } from '../utils/api';
+import { useAuth } from '../contexts/AuthContext';
 
 // Add CSS for spinning loader
 const spinningStyle = {
@@ -196,6 +197,9 @@ const AdminCmSkuDetail: React.FC = () => {
   const cmDescription = location.state?.cmDescription || '';  // Component Master description
   const status = location.state?.status || '';       // Status passed from previous page
   const navigate = useNavigate();                    // Navigation function
+  
+  // Get authenticated user information
+  const { user } = useAuth();
 
   // ===== CORE DATA STATE =====
   // State for managing SKU data and loading states
@@ -1807,7 +1811,8 @@ const AdminCmSkuDetail: React.FC = () => {
             formulation_reference: addSkuFormulationReference,
             skutype: skutypeBody,  // Only send if checkbox is checked
             bulk_expert: addSkuDropdownValue,  // Add bulk_expert to sku_data as well
-            is_approved: 0  // Add is_approved parameter with value 0
+            is_approved: 0,  // Add is_approved parameter with value 0
+            created_by: user?.id || 1  // Add logged-in user ID
           },
           components: filteredComponents.map(component => ({
             component_code: component.component_code,
@@ -1854,7 +1859,8 @@ const AdminCmSkuDetail: React.FC = () => {
           formulation_reference: addSkuFormulationReference,
           skutype: skutypeBody,
           bulk_expert: addSkuDropdownValue,
-          is_approved: 0
+          is_approved: 0,
+          created_by: user?.id || 1
         },
         components: filteredComponents.map(component => ({
           component_code: component.component_code,
@@ -1921,7 +1927,7 @@ const AdminCmSkuDetail: React.FC = () => {
         cm_code: cmCode,
         cm_description: cmDescription,
         is_active: true, // assuming new SKUs are active
-        created_by: 'system', // or use actual user if available
+        created_by: user?.username || user?.id?.toString() || 'system', // Use actual logged-in user
         created_date: new Date().toISOString()
       });
       if (!auditResult.success) {
@@ -2334,7 +2340,7 @@ const AdminCmSkuDetail: React.FC = () => {
         cm_code: cmCode,
         cm_description: cmDescription,
         is_active: true, // or use actual value if available
-        created_by: 'system', // or use actual user if available
+        created_by: user?.username || user?.id?.toString() || 'system', // Use actual logged-in user
         created_date: new Date().toISOString()
       });
       if (!auditResult.success) {
@@ -3221,8 +3227,8 @@ const AdminCmSkuDetail: React.FC = () => {
             weight_unit_measure_id: Number(addComponentData.componentWeightUnitOfMeasure) || 0,
             percent_mechanical_pcr_content: Number(addComponentData.percentPostConsumer) || 0,
             percent_bio_sourced: Number(addComponentData.percentBioSourced) || 0,
-            user_id: 1,
-            created_by: 1,
+            user_id: user?.id || 1, // Use actual logged-in user ID
+            created_by: user?.id || 1, // Use actual logged-in user ID
             is_active: true
           };
         

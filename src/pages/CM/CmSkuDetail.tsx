@@ -39,6 +39,8 @@ interface SkuData {
   sku_reference?: string | null; // Reference SKU for external SKUs
   is_active: boolean;            // Whether the SKU is currently active
   is_approved?: number | boolean; // Approval status (0/false = not approved, 1/true = approved)
+  is_display?: number | boolean;  // Display status (0/false = not displayed, 1/true = displayed)
+  is_sendforapproval?: number | boolean; // Send for approval status (0/false = not sent, 1/true = sent)
   created_by?: string | null;    // User who created the SKU
   created_date: string;          // Date when SKU was created
   period: string;                // Period/Year for the SKU (e.g., "2024")
@@ -48,6 +50,8 @@ interface SkuData {
   dual_source_sku?: string | null; // Dual source SKU information
   skutype?: string | null;       // SKU type: 'internal' or 'external'
   bulk_expert?: string | null;   // Bulk or Expert option
+  is_admin?: boolean;            // Admin access flag from API
+  is_cmapproved?: boolean;       // CM approval status flag from API
 }
 
 /**
@@ -185,6 +189,38 @@ const InfoIcon = ({ info }: { info: string }) => (
 );
 
 /**
+ * Helper function to check if content should be displayed based on user role and SKU flags
+ * For non-admin users: content is hidden if is_sendforapproval is false
+ * For admin users: content is always shown regardless of flags
+ * 
+ * @param user - Current authenticated user
+ * @param sku - SKU data object
+ * @returns boolean - Whether content should be displayed
+ */
+const shouldDisplayContent = (user: any, sku: SkuData): boolean => {
+  // Admin users can see everything
+  if (user?.role === '1' || user?.role === 1) {
+    return true;
+  }
+  
+  // Non-admin users: check is_sendforapproval flag
+  // Convert to boolean for consistent comparison
+  const isSendForApproval = Boolean(sku.is_sendforapproval);
+  
+  // Log visibility decisions for debugging
+  console.log(`🔍 SKU Visibility Check for ${sku.sku_code}:`, {
+    userRole: user?.role,
+    isAdmin: user?.role === '1' || user?.role === 1,
+    isSendForApproval: sku.is_sendforapproval,
+    isSendForApprovalBoolean: isSendForApproval,
+    willDisplay: user?.role === '1' || user?.role === 1 || isSendForApproval
+  });
+  
+  // Only show content if is_sendforapproval is true
+  return isSendForApproval;
+};
+
+/**
  * CmSkuDetail Component
  * Main component for managing SKU (Stock Keeping Unit) details
  * Handles CRUD operations for SKUs and their components
@@ -206,6 +242,13 @@ const CmSkuDetail: React.FC = () => {
   console.log('CmSkuDetail component loaded with cmDescription:', cmDescription);
   console.log('Current location:', location.pathname);
   console.log('Location state:', location.state);
+  
+  // Log user role and visibility rules
+  console.log('👤 User Role & Visibility Rules:', {
+    userRole: user?.role,
+    isAdmin: user?.role === '1' || user?.role === 1,
+    visibilityRule: user?.role === '1' || user?.role === 1 ? 'Admin: See all SKUs' : 'Non-admin: Only see SKUs with is_sendforapproval=true'
+  });
 
   // ===== CORE DATA STATE =====
   // State for managing SKU data and loading states
@@ -214,9 +257,33 @@ const CmSkuDetail: React.FC = () => {
   const [error, setError] = useState<string | null>(null);         // Error message state
   const [pageLoadStartTime, setPageLoadStartTime] = useState<number>(Date.now());  // Track page load time
   const [minimumLoaderComplete, setMinimumLoaderComplete] = useState<boolean>(false);  // Minimum loader display time
+  
+  // ===== SAFETY LOGIC STATE =====
+  // State for managing CM approval safety logic
+  const [requiresCmApproval, setRequiresCmApproval] = useState<boolean>(false);  // Safety logic when is_cmapproved: false
+  
+  // State for managing Send for Approval logic
+  const [requiresSendForApproval, setRequiresSendForApproval] = useState<boolean>(false);  // Logic when is_sendforapproval: false
+  
+  // Auto-show frozen page modal when conditions are met
+  useEffect(() => {
+    if (!loading && (requiresCmApproval || requiresSendForApproval)) {
+      setShowFrozenPageModal(true);
+      console.log('🔒 Auto-showing frozen page modal - page is frozen until approval');
+    }
+  }, [loading, requiresCmApproval, requiresSendForApproval]);
+  
+  // State for showing the frozen page modal
+  const [showFrozenPageModal, setShowFrozenPageModal] = useState<boolean>(false);
 
   // ===== MODAL STATE MANAGEMENT =====
   // State for controlling various modal dialogs
+  
+  // Handler to close the frozen page modal
+  const handleCloseFrozenPageModal = () => {
+    setShowFrozenPageModal(false);
+    console.log('✅ Frozen page modal closed');
+  };
   const [showComponentModal, setShowComponentModal] = useState(false);      // Component details modal
   const [showSkuModal, setShowSkuModal] = useState(false);                 // SKU details modal
 
@@ -261,6 +328,17 @@ const CmSkuDetail: React.FC = () => {
   // Approval modal states
   const [showApprovalConfirm, setShowApprovalConfirm] = useState(false);    // Approval confirmation modal
   const [pendingApprovalAction, setPendingApprovalAction] = useState<'approve' | 'reject' | null>(null); // Action to be performed
+  
+  // Rejection reason modal states
+  const [showRejectionReasonModal, setShowRejectionReasonModal] = useState(false);  // Rejection reason modal
+  const [rejectionReason, setRejectionReason] = useState('');                        // Rejection reason text
+  const [rejectionReasonError, setRejectionReasonError] = useState('');              // Validation error for rejection reason
+  
+  // Comment field state (for both approval and rejection)
+  const [approvalComment, setApprovalComment] = useState('');                        // Comment for approval/rejection
+  
+  // Approval comment modal state
+  const [showApprovalCommentModal, setShowApprovalCommentModal] = useState(false);   // Approval comment modal
 
   // ===== FILTERING AND TAB STATE =====
   // State for managing filters and tab navigation
@@ -271,33 +349,6 @@ const CmSkuDetail: React.FC = () => {
 
   // State for applied filters
   const [appliedFilters, setAppliedFilters] = useState<{ years: string[]; skuDescriptions: string[]; componentCodes: string[] }>({ years: [], skuDescriptions: [], componentCodes: [] });
-
-  // Filtered SKUs based on applied filters
-  const filteredSkuData = skuData.filter(sku => {
-    // Filter by period (years)
-    const yearMatch =
-      appliedFilters.years.length === 0 ||
-      appliedFilters.years.includes(sku.period);
-
-    // Filter by SKU Description
-    const descMatch =
-      appliedFilters.skuDescriptions.length === 0 ||
-      appliedFilters.skuDescriptions.some(selectedDesc => {
-        // Extract sku_description from the selected format "cm_code - sku_description"
-        const selectedSkuDesc = selectedDesc.split(' - ')[1] || selectedDesc;
-        return selectedSkuDesc === sku.sku_description;
-      });
-
-    // Filter by Component Code (check if any component in this SKU matches the selected component codes)
-    const componentMatch =
-      appliedFilters.componentCodes.length === 0 ||
-      (componentDetails[sku.sku_code] && 
-       componentDetails[sku.sku_code].some((component: any) => 
-         appliedFilters.componentCodes.includes(component.component_code)
-       ));
-
-    return yearMatch && descMatch && componentMatch;
-  });
 
   // Search button handler
   const handleSearch = () => {
@@ -423,11 +474,35 @@ const CmSkuDetail: React.FC = () => {
                 : Number(sku.is_approved) || 0
           }));
           
-          console.log('SKUs loaded from universal API:', processedSkus.length);
-          console.log('Approval status mapping:', processedSkus.map(s => ({ 
+          console.log('🔄 SKUs loaded from universal API:', processedSkus.length);
+          console.log('📊 Approval status mapping:', processedSkus.map(s => ({ 
             sku_code: s.sku_code, 
+            sku_id: s.id,
             is_approved: s.is_approved, 
-            type: typeof s.is_approved 
+            type: typeof s.is_approved,
+            status: s.is_approved === 0 ? 'Pending' : s.is_approved === 1 ? 'Approved' : s.is_approved === 2 ? 'Rejected' : 'Unknown'
+          })));
+          
+          // Check if any SKU has is_cmapproved: false to implement safety logic
+          const hasAnyNonCmApprovedSku = processedSkus.some(sku => sku.is_cmapproved === false);
+          setRequiresCmApproval(hasAnyNonCmApprovedSku);
+          console.log('🔒 Safety logic required (is_cmapproved: false found):', hasAnyNonCmApprovedSku);
+          
+          // Log all SKU data with is_cmapproved field
+          console.log('📊 All SKU data with is_cmapproved field:', processedSkus.map(sku => ({
+            sku_code: sku.sku_code,
+            is_cmapproved: sku.is_cmapproved
+          })));
+          
+          // Check if any SKU has is_sendforapproval: false to disable Add Component button
+          const hasAnyNonSendForApprovalSku = processedSkus.some(sku => sku.is_sendforapproval === false);
+          setRequiresSendForApproval(hasAnyNonSendForApprovalSku);
+          console.log('🔒 Add Component button disabled (is_sendforapproval: false found):', hasAnyNonSendForApprovalSku);
+          
+          // Log all SKU data with is_sendforapproval field
+          console.log('📊 All SKU data with is_sendforapproval field:', processedSkus.map(sku => ({
+            sku_code: sku.sku_code,
+            is_sendforapproval: sku.is_sendforapproval
           })));
           
           setSkuData(processedSkus);
@@ -692,6 +767,58 @@ const CmSkuDetail: React.FC = () => {
   const [years, setYears] = useState<Array<{id: string, period: string}>>([]);
   const [selectedYears, setSelectedYears] = useState<string[]>([]);
 
+  // Filtered SKUs based on applied filters
+  const filteredSkuData = skuData.filter(sku => {
+    // Filter by period (years)
+    const yearMatch =
+      appliedFilters.years.length === 0 ||
+      appliedFilters.years.includes(sku.period);
+
+    // Filter by SKU Description
+    const descMatch =
+      appliedFilters.skuDescriptions.length === 0 ||
+      appliedFilters.skuDescriptions.some(selectedDesc => {
+        // Extract sku_description from the selected format "cm_code - sku_description"
+        const selectedSkuDesc = selectedDesc.split(' - ')[1] || selectedDesc;
+        return selectedSkuDesc === sku.sku_description;
+      });
+
+    // Filter by Component Code (check if any component in this SKU matches the selected component codes)
+    const componentMatch =
+      appliedFilters.componentCodes.length === 0 ||
+      (componentDetails[sku.sku_code] && 
+       componentDetails[sku.sku_code].some((component: any) => 
+         appliedFilters.componentCodes.includes(component.component_code)
+       ));
+
+    // Apply visibility logic based on user role and SKU flags
+    const visibilityMatch = shouldDisplayContent(user, sku);
+    
+    return yearMatch && descMatch && componentMatch && visibilityMatch;
+  });
+
+  // Log approval status distribution when SKU data changes
+  useEffect(() => {
+    if (skuData.length > 0) {
+      const statusDistribution = skuData.reduce((acc, sku) => {
+        const status = normalizeApprovalStatus(sku.is_approved);
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+      }, {} as Record<number, number>);
+      
+      console.log('📊 SKU Approval Status Distribution:', {
+        total: skuData.length,
+        distribution: statusDistribution,
+        summary: {
+          '0 (Pending)': statusDistribution[0] || 0,
+          '1 (Approved)': statusDistribution[1] || 0,
+          '2 (Rejected)': statusDistribution[2] || 0,
+          'Unknown': Object.keys(statusDistribution).filter(k => ![0, 1, 2].includes(Number(k))).length
+        }
+      });
+    }
+  }, [skuData]);
+
 
 
   // Helper function to get period text from selected year ID
@@ -702,16 +829,28 @@ const CmSkuDetail: React.FC = () => {
 
   // Helper function to normalize approval status to ensure it's always 0, 1, or 2
   const normalizeApprovalStatus = (isApproved: number | boolean | undefined): number => {
+    let result: number;
+    
     if (typeof isApproved === 'boolean') {
-      return isApproved ? 1 : 0;
+      result = isApproved ? 1 : 0;
     } else if (typeof isApproved === 'string') {
       const parsed = parseInt(isApproved);
-      return isNaN(parsed) ? 0 : parsed;
+      result = isNaN(parsed) ? 0 : parsed;
     } else if (typeof isApproved === 'number') {
-      return isApproved;
+      result = isApproved;
     } else {
-      return 0; // Default to pending for undefined/null
+      result = 0; // Default to pending for undefined/null
     }
+    
+    // Debug logging for approval status normalization
+    console.log(`🔍 Approval Status Normalization:`, {
+      original: isApproved,
+      originalType: typeof isApproved,
+      normalized: result,
+      status: result === 0 ? 'Pending' : result === 1 ? 'Approved' : result === 2 ? 'Rejected' : 'Unknown'
+    });
+    
+    return result;
   };
 
   // Helper function to get SKU panel background color based on approval status
@@ -1069,38 +1208,87 @@ const CmSkuDetail: React.FC = () => {
   };
 
   // Handler to update approval status
-  const handleApprovalChange = async (skuId: number, newApprovalStatus: boolean) => {
+  const handleApprovalChange = async (skuId: number, action: 'approve' | 'reject', rejectionReason?: string, comment?: string) => {
+    // Declare variables outside try-catch scope so they're accessible in both blocks
+    let originalApprovalStatus: number | boolean | undefined;
+    let sku: SkuData | undefined;
+    
     try {
       // Find the SKU data to get sku_code and cm_code
-      const sku = skuData.find(s => s.id === skuId);
+      sku = skuData.find(s => s.id === skuId);
       if (!sku) {
         throw new Error('SKU not found');
       }
 
+      // Store original status for error handling
+      originalApprovalStatus = sku.is_approved;
+
       // Determine approval value: 1 for approve, 2 for reject
-      const approvalValue = newApprovalStatus ? 1 : 2;
+      const approvalValue = action === 'approve' ? 1 : 2;
       
-      // Optimistically update UI
-      setSkuData(prev => prev.map(sku => sku.id === skuId ? { ...sku, is_approved: newApprovalStatus ? 1 : 0 } : sku));
+      console.log('🔍 Updating approval status:', {
+        skuId,
+        sku_code: sku.sku_code,
+        action,
+        approvalValue,
+        currentStatus: originalApprovalStatus,
+        approvalComment: comment || undefined,
+        rejectionReason: action === 'reject' ? rejectionReason : undefined,
+        is_admin: true,
+        is_cmapproved: false
+      });
       
-      // Send POST request to new approval API
-      const result = await apiPost('/skuapproval', { 
+      // Optimistically update UI with correct values
+      setSkuData(prev => prev.map(s => 
+        s.id === skuId ? 
+        { ...s, is_approved: approvalValue } : s
+      ));
+      
+      // Prepare API payload
+      const apiPayload: any = { 
         sku_code: sku.sku_code,
         cm_code: sku.cm_code,
-        is_approved: approvalValue
-      });
+        is_approved: approvalValue,
+        is_admin: true,           // Always send true for admin actions
+        is_cmapproved: false      // Always send false for approval/rejection actions
+      };
+      
+      // Add comment for both approval and rejection
+      if (comment && comment.trim()) {
+        apiPayload.comment = comment.trim();
+      }
+      
+      // Add rejection reason if rejecting
+      if (action === 'reject' && rejectionReason) {
+        apiPayload.rejection_reason = rejectionReason.trim();
+      }
+      
+      // Send POST request to approval API
+      console.log('🚀 Sending API payload with admin fields:', apiPayload);
+      const result = await apiPost('/skuapproval', apiPayload);
       
       if (!result.success) {
         throw new Error('API returned unsuccessful response for approval update');
       }
       
       console.log('✅ SKU approval status updated successfully');
-      console.log('📊 Approval data:', { skuId, sku_code: sku.sku_code, cm_code: sku.cm_code, approvalValue, result });
+      console.log('📊 Approval data:', { skuId, sku_code: sku.sku_code, cm_code: sku.cm_code, approvalValue, comment, rejectionReason, result });
+      
+      // Refresh data to ensure consistency
+      console.log('🔄 Refreshing data after approval change...');
+      await fetchDashboardData(['skus']);
+      console.log('✅ Data refresh completed after approval change');
+      
     } catch (err) {
-      // If error, revert UI change
-      setSkuData(prev => prev.map(sku => sku.id === skuId ? { ...sku, is_approved: newApprovalStatus ? 0 : 1 } : sku));
+      // If error, revert UI change using stored original status
+      if (originalApprovalStatus !== undefined) {
+        setSkuData(prev => prev.map(s => 
+          s.id === skuId ? 
+          { ...s, is_approved: originalApprovalStatus } : s  // Revert to original status
+        ));
+      }
       showError('Failed to update approval status. Please try again.');
-      console.log('❌ Approval update failed:', { skuId, newApprovalStatus, error: err });
+      console.log('❌ Approval update failed:', { skuId, action, approvalComment: comment, rejectionReason, error: err });
     }
   };
 
@@ -1115,12 +1303,18 @@ const CmSkuDetail: React.FC = () => {
   // Handler for approval confirmation
   const handleApprovalConfirm = async () => {
     if (pendingSkuId !== null && pendingApprovalAction !== null) {
-      const newStatus = pendingApprovalAction === 'approve';
-      await handleApprovalChange(pendingSkuId, newStatus);
+      console.log('🔍 Confirming approval action:', { skuId: pendingSkuId, action: pendingApprovalAction });
+      
+      if (pendingApprovalAction === 'reject') {
+        // For rejection, show the reason modal instead of proceeding directly
+        setShowApprovalConfirm(false);
+        setShowRejectionReasonModal(true);
+      } else {
+        // For approval, show comment modal
+        setShowApprovalConfirm(false);
+        setShowApprovalCommentModal(true);
+      }
     }
-    setShowApprovalConfirm(false);
-    setPendingSkuId(null);
-    setPendingApprovalAction(null);
   };
 
   // Handler for approval modal cancel
@@ -1128,6 +1322,73 @@ const CmSkuDetail: React.FC = () => {
     setShowApprovalConfirm(false);
     setPendingSkuId(null);
     setPendingApprovalAction(null);
+  };
+
+  // Handler for rejection reason confirmation
+  const handleRejectionReasonConfirm = async () => {
+    if (pendingSkuId !== null && rejectionReason.trim()) {
+      console.log('🔍 Confirming rejection with reason:', { 
+        skuId: pendingSkuId, 
+        reason: rejectionReason.trim() 
+      });
+      
+      // Clear validation error
+      setRejectionReasonError('');
+      
+      // Proceed with rejection
+      await handleApprovalChange(pendingSkuId, 'reject', rejectionReason.trim(), rejectionReason.trim());
+      
+      // Close modal and reset states
+      setShowRejectionReasonModal(false);
+      setPendingSkuId(null);
+      setPendingApprovalAction(null);
+      setRejectionReason('');
+    } else {
+      // Show validation error
+      setRejectionReasonError('Please enter a reason for rejection');
+    }
+  };
+
+  // Handler for rejection reason modal cancel
+  const handleRejectionReasonCancel = () => {
+    setShowRejectionReasonModal(false);
+    setPendingSkuId(null);
+    setPendingApprovalAction(null);
+    setRejectionReason('');
+    setRejectionReasonError('');
+  };
+
+  // Handler for approval comment confirmation
+  const handleApprovalCommentConfirm = async () => {
+    if (pendingSkuId !== null) {
+      console.log('🔍 Confirming approval with comment:', { 
+        skuId: pendingSkuId, 
+        comment: approvalComment.trim() 
+      });
+      
+      // Proceed with approval
+      console.log('🔍 Calling handleApprovalChange with:', {
+        skuId: pendingSkuId,
+        action: 'approve',
+        rejectionReason: undefined,
+        comment: approvalComment.trim()
+      });
+      await handleApprovalChange(pendingSkuId, 'approve', undefined, approvalComment.trim());
+      
+      // Close modal and reset states
+      setShowApprovalCommentModal(false);
+      setPendingSkuId(null);
+      setPendingApprovalAction(null);
+      setApprovalComment('');
+    }
+  };
+
+  // Handler for approval comment modal cancel
+  const handleApprovalCommentCancel = () => {
+    setShowApprovalCommentModal(false);
+    setPendingSkuId(null);
+    setPendingApprovalAction(null);
+    setApprovalComment('');
   };
 
   // Handler for header button click (show modal)
@@ -4266,7 +4527,7 @@ const CmSkuDetail: React.FC = () => {
                 </li>
                 <li> | </li>
                 <li>
-                  <strong>Total SKUs: </strong> {skuData.length}
+                  <strong>Total SKUs: </strong> {skuData.filter(sku => shouldDisplayContent(user, sku)).length}
                 </li>
               </ul>
             </div>
@@ -4414,11 +4675,17 @@ const CmSkuDetail: React.FC = () => {
                         fontWeight: 600, 
                         marginTop: 0,
                         fontSize: '13px',
-                        padding: '8px 12px'
+                        padding: '8px 12px',
+                        opacity: requiresCmApproval ? 0.5 : 1,
+                        cursor: requiresCmApproval ? 'not-allowed' : 'pointer'
                       }}
                       onClick={() => {
-                        navigate(`/cm/generate-pdf?cmCode=${encodeURIComponent(cmCode || '')}&cmDescription=${encodeURIComponent(cmDescription)}`);
+                        if (!requiresCmApproval) {
+                          navigate(`/cm/generate-pdf?cmCode=${encodeURIComponent(cmCode || '')}&cmDescription=${encodeURIComponent(cmDescription)}`);
+                        }
                       }}
+                      disabled={requiresCmApproval}
+                      title={requiresCmApproval ? 'View PDF disabled - CM approval required' : 'View PDF'}
                     >
                       <i className="ri-file-pdf-2-line" style={{ fontSize: 14, marginRight: '4px' }}></i>
                       <span>View PDF</span>
@@ -4449,22 +4716,26 @@ const CmSkuDetail: React.FC = () => {
                 }}>
                   <button className="add-sku-btn btnCommon btnGreen filterButtons"
                     style={{
-                      background: '#30ea03',
+                      background: requiresCmApproval ? '#999' : '#30ea03',
                       color: '#000',
                       border: 'none',
                       borderRadius: 6,
                       fontWeight: 'bold',
                       padding: '6px 12px',
                       fontSize: 13,
-                      cursor: 'pointer',
+                      cursor: requiresCmApproval ? 'not-allowed' : 'pointer',
                       boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
                       display: 'flex',
                       alignItems: 'center',
-                      minWidth: 110
+                      minWidth: 110,
+                      opacity: requiresCmApproval ? 0.5 : 1
                     }}
-                    title="Send for Approval"
+                    title={requiresCmApproval ? 'Send for Approval disabled - CM approval required' : 'Send for Approval'}
+                    disabled={requiresCmApproval}
                     onClick={() => {
-                                                              navigate(`/cm/sedforapproval?cmCode=${encodeURIComponent(cmCode || '')}&cmDescription=${encodeURIComponent(cmDescription)}`);
+                      if (!requiresCmApproval) {
+                        navigate(`/cm/sedforapproval?cmCode=${encodeURIComponent(cmCode || '')}&cmDescription=${encodeURIComponent(cmDescription)}`);
+                      }
                     }}
                   >
                     <span>Send for Approval</span>
@@ -4553,7 +4824,7 @@ const CmSkuDetail: React.FC = () => {
                       }}
                       onClick={() => setActiveTab('active')}
                     >
-                      Active SKU ({filteredSkuData.filter(sku => sku.is_active).length})
+                      Active SKU ({filteredSkuData.filter(sku => sku.is_active && shouldDisplayContent(user, sku)).length})
                     </button>
                     <button
                       style={{
@@ -4570,13 +4841,13 @@ const CmSkuDetail: React.FC = () => {
                       }}
                       onClick={() => setActiveTab('inactive')}
                     >
-                      Inactive SKU ({filteredSkuData.filter(sku => !sku.is_active).length})
+                      Inactive SKU ({filteredSkuData.filter(sku => !sku.is_active && shouldDisplayContent(user, sku)).length})
                     </button>
                   </div>
                 </div>
 
-                {/* No Data Message for Active Tab */}
-                {activeTab === 'active' && filteredSkuData.filter(sku => sku.is_active).length === 0 && (
+                                  {/* No Data Message for Active Tab */}
+                  {activeTab === 'active' && filteredSkuData.filter(sku => sku.is_active && shouldDisplayContent(user, sku)).length === 0 && (
                   <div style={{ 
                     textAlign: 'center', 
                     padding: '40px 20px', 
@@ -4590,10 +4861,12 @@ const CmSkuDetail: React.FC = () => {
                   </div>
                 )}
 
-                {/* Active SKU Content */}
-                {activeTab === 'active' && filteredSkuData.filter(sku => sku.is_active).length > 0 && (
+                                  {/* Active SKU Content */}
+                  {activeTab === 'active' && filteredSkuData.filter(sku => sku.is_active && shouldDisplayContent(user, sku)).length > 0 && (
                   <div style={{ marginBottom: '30px' }}>
                     {filteredSkuData.filter(sku => sku.is_active).map((sku, index) => (
+                      // Apply visibility logic based on user role and SKU flags
+                      shouldDisplayContent(user, sku) ? (
                 <div key={sku.id} className="panel panel-default" style={{ marginBottom: 10, borderRadius: 6, border: '1px solid #e0e0e0', overflow: 'hidden' }}>
                   <div
                     className="panel-heading panel-title"
@@ -4625,71 +4898,123 @@ const CmSkuDetail: React.FC = () => {
                         <> || {sku.sku_description}</>
                       )}
                       {/* Approval status indicator */}
-                      <span style={{ 
-                        marginLeft: 8, 
-                        padding: '2px 8px', 
-                        borderRadius: 12, 
-                        fontSize: 10, 
-                        fontWeight: 'bold',
-                        background: normalizeApprovalStatus(sku.is_approved) === 1 ? '#30ea03' : normalizeApprovalStatus(sku.is_approved) === 2 ? '#dc3545' : '#ffc107',
-                        color: normalizeApprovalStatus(sku.is_approved) === 1 ? '#000' : normalizeApprovalStatus(sku.is_approved) === 2 ? '#fff' : '#000'
-                      }}>
-                        {normalizeApprovalStatus(sku.is_approved) === 1 ? 'Approved' : normalizeApprovalStatus(sku.is_approved) === 2 ? 'Rejected' : 'Approval Pending'}
-                      </span>
+                      {(() => {
+                        const approvalStatus = normalizeApprovalStatus(sku.is_approved);
+                        const statusText = approvalStatus === 1 ? 'Approved' : approvalStatus === 2 ? 'Rejected' : 'Approval Pending';
+                        const statusColor = approvalStatus === 1 ? '#30ea03' : approvalStatus === 2 ? '#dc3545' : '#ffc107';
+                        const textColor = approvalStatus === 1 ? '#000' : approvalStatus === 2 ? '#fff' : '#000';
+                        
+                        console.log(`🔍 Status Display for SKU ${sku.sku_code}:`, {
+                          approvalStatus,
+                          statusText,
+                          statusColor,
+                          textColor,
+                          logic: `(${approvalStatus} === 1 ? 'Approved' : ${approvalStatus} === 2 ? 'Rejected' : 'Approval Pending')`
+                        });
+                        
+                        return (
+                          <span style={{ 
+                            marginLeft: 8, 
+                            padding: '2px 8px', 
+                            borderRadius: 12, 
+                            fontSize: 10, 
+                            fontWeight: 'bold',
+                            background: statusColor,
+                            color: textColor
+                          }}>
+                            {statusText}
+                          </span>
+                        );
+                      })()}
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {/* Approve Button - Show if pending or rejected (to change status) */}
+                      {/* Debug: Log button visibility logic */}
+                      {(() => {
+                        const approvalStatus = normalizeApprovalStatus(sku.is_approved);
+                        const showApprove = approvalStatus === 0 || approvalStatus === 2;
+                        const showReject = approvalStatus === 0 || approvalStatus === 1;
+                        
+                        console.log(`🔍 Button Visibility for SKU ${sku.sku_code}:`, {
+                          skuId: sku.id,
+                          rawIsApproved: sku.is_approved,
+                          rawType: typeof sku.is_approved,
+                          approvalStatus,
+                          showApprove,
+                          showReject,
+                          logic: {
+                            approve: `(${approvalStatus} === 0 || ${approvalStatus} === 2) = ${showApprove}`,
+                            reject: `(${approvalStatus} === 0 || ${approvalStatus} === 1) = ${showReject}`
+                          },
+                          expectedBehavior: {
+                            '0 (Pending)': 'Show both Approve and Reject',
+                            '1 (Approved)': 'Show only Reject (hide Approve)',
+                            '2 (Rejected)': 'Show only Approve (hide Reject)'
+                          }
+                        });
+                        
+                        return null;
+                      })()}
+                      
+                      {/* Approve Button - Show if pending (0) or rejected (2) to allow approval */}
                       {(normalizeApprovalStatus(sku.is_approved) === 0 || normalizeApprovalStatus(sku.is_approved) === 2) && (
                         <button
                           style={{
-                            background: '#28a745',
+                            background: requiresCmApproval ? '#999' : '#28a745',
                             color: '#fff',
                             border: 'none',
                             borderRadius: 4,
                             fontWeight: 'bold',
                             padding: '3px 12px',
-                            cursor: 'pointer',
+                            cursor: requiresCmApproval ? 'not-allowed' : 'pointer',
                             minWidth: 70,
                             height: 24,
                             fontSize: 11,
+                            opacity: requiresCmApproval ? 0.5 : 1
                           }}
+                          disabled={requiresCmApproval}
+                          title={requiresCmApproval ? 'Approve disabled - CM approval required' : 'Approve SKU'}
                           onClick={e => {
                             e.stopPropagation();
-                            handleApprovalClick(sku.id, 'approve');
+                            if (!requiresCmApproval) {
+                              handleApprovalClick(sku.id, 'approve');
+                            }
                           }}
-                          title="Approve SKU"
                         >
                           Approve
                         </button>
                       )}
                       
-                      {/* Reject Button - Show if pending or approved (to change status) */}
+                      {/* Reject Button - Show if pending (0) or approved (1) to allow rejection */}
                       {(normalizeApprovalStatus(sku.is_approved) === 0 || normalizeApprovalStatus(sku.is_approved) === 1) && (
                         <button
                           style={{
-                            background: '#dc3545',
+                            background: requiresCmApproval ? '#999' : '#dc3545',
                             color: '#fff',
                             border: 'none',
                             borderRadius: 4,
                             fontWeight: 'bold',
                             padding: '3px 12px',
-                            cursor: 'pointer',
+                            cursor: requiresCmApproval ? 'not-allowed' : 'pointer',
                             minWidth: 70,
                             height: 24,
                             fontSize: 11,
+                            opacity: requiresCmApproval ? 0.5 : 1
                           }}
+                          disabled={requiresCmApproval}
+                          title={requiresCmApproval ? 'Reject disabled - CM approval required' : 'Reject SKU'}
                           onClick={e => {
                             e.stopPropagation();
-                            handleApprovalClick(sku.id, 'reject');
+                            if (!requiresCmApproval) {
+                              handleApprovalClick(sku.id, 'reject');
+                            }
                           }}
-                          title="Reject SKU"
                         >
                           Reject
                         </button>
                       )}
                       
-                      {/* Active/Inactive Button */}
-                      <button
+                      {/* Active/Inactive Button - HIDDEN */}
+                      {/* <button
                         style={{
                           background: sku.is_active ? '#30ea03' : '#ccc',
                           color: sku.is_active ? '#000' : '#fff',
@@ -4708,7 +5033,7 @@ const CmSkuDetail: React.FC = () => {
                         }}
                       >
                         {sku.is_active ? 'Active' : 'Inactive'}
-                      </button>
+                      </button> */}
                     </span>
                   </div>
                   <Collapse isOpened={openIndex === index}>
@@ -4762,7 +5087,7 @@ const CmSkuDetail: React.FC = () => {
                             <button
                               className="add-sku-btn btnCommon btnGreen filterButtons"
                               style={{ 
-                                backgroundColor: '#30ea03', 
+                                backgroundColor: (requiresCmApproval || requiresSendForApproval) ? '#999' : '#30ea03', 
                                 color: '#000', 
                                 minWidth: 110, 
                                 fontSize: 13,
@@ -4770,16 +5095,25 @@ const CmSkuDetail: React.FC = () => {
                                 border: 'none',
                                 borderRadius: 6,
                                 fontWeight: 'bold',
-                                cursor: 'pointer',
+                                cursor: (requiresCmApproval || requiresSendForApproval) ? 'not-allowed' : 'pointer',
                                 boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
                                 display: 'flex',
-                                alignItems: 'center'
+                                alignItems: 'center',
+                                opacity: (requiresCmApproval || requiresSendForApproval) ? 0.5 : 1
                               }}
+                              disabled={requiresCmApproval || requiresSendForApproval}
+                              title={
+                                requiresCmApproval ? 'Add Component disabled - CM approval required' :
+                                requiresSendForApproval ? 'Add Component disabled - Send for Approval required' :
+                                'Add Component'
+                              }
                               onClick={e => { 
                                 e.stopPropagation(); 
-                                setSelectedSkuCode(sku.sku_code); 
-                                resetAddComponentForm();
-                                setShowAddComponentModal(true); 
+                                if (!requiresCmApproval && !requiresSendForApproval) {
+                                  setSelectedSkuCode(sku.sku_code); 
+                                  resetAddComponentForm();
+                                  setShowAddComponentModal(true); 
+                                }
                               }}
                             >
                               <span>Add Component</span>
@@ -5288,12 +5622,13 @@ const CmSkuDetail: React.FC = () => {
                     </div>
                   </Collapse>
                 </div>
+              ) : null
               ))}
                     </div>
                   )}
 
                   {/* No Data Message for Inactive Tab */}
-                  {activeTab === 'inactive' && filteredSkuData.filter(sku => !sku.is_active).length === 0 && (
+                  {activeTab === 'inactive' && filteredSkuData.filter(sku => !sku.is_active && shouldDisplayContent(user, sku)).length === 0 && (
                     <div style={{ 
                       textAlign: 'center', 
                       padding: '40px 20px', 
@@ -5308,9 +5643,11 @@ const CmSkuDetail: React.FC = () => {
                   )}
 
                   {/* Inactive SKU Content */}
-                  {activeTab === 'inactive' && filteredSkuData.filter(sku => !sku.is_active).length > 0 && (
+                  {activeTab === 'inactive' && filteredSkuData.filter(sku => !sku.is_active && shouldDisplayContent(user, sku)).length > 0 && (
                     <div style={{ marginBottom: '30px' }}>
                       {filteredSkuData.filter(sku => !sku.is_active).map((sku, index) => (
+                        // Apply visibility logic based on user role and SKU flags
+                        shouldDisplayContent(user, sku) ? (
                         <div key={sku.id} className="panel panel-default" style={{ marginBottom: 10, borderRadius: 6, border: '1px solid #e0e0e0', overflow: 'hidden' }}>
                           <div
                             className="panel-heading panel-title"
@@ -5335,20 +5672,38 @@ const CmSkuDetail: React.FC = () => {
                                 <> || {sku.sku_description}</>
                               )}
                               {/* Approval status indicator */}
-                              <span style={{ 
-                                marginLeft: 8, 
-                                padding: '2px 8px', 
-                                borderRadius: 12, 
-                                fontSize: 10, 
-                                fontWeight: 'bold',
-                                background: normalizeApprovalStatus(sku.is_approved) === 1 ? '#30ea03' : normalizeApprovalStatus(sku.is_approved) === 2 ? '#dc3545' : '#ffc107',
-                                color: normalizeApprovalStatus(sku.is_approved) === 1 ? '#000' : normalizeApprovalStatus(sku.is_approved) === 2 ? '#fff' : '#000'
-                              }}>
-                                {normalizeApprovalStatus(sku.is_approved) === 1 ? 'Approved' : normalizeApprovalStatus(sku.is_approved) === 2 ? 'Rejected' : 'Approval Pending'}
-                              </span>
+                              {(() => {
+                                const approvalStatus = normalizeApprovalStatus(sku.is_approved);
+                                const statusText = approvalStatus === 1 ? 'Approved' : approvalStatus === 2 ? 'Rejected' : 'Approval Pending';
+                                const statusColor = approvalStatus === 1 ? '#30ea03' : approvalStatus === 2 ? '#dc3545' : '#ffc107';
+                                const textColor = approvalStatus === 1 ? '#000' : approvalStatus === 2 ? '#fff' : '#000';
+                                
+                                console.log(`🔍 Status Display for Inactive SKU ${sku.sku_code}:`, {
+                                  approvalStatus,
+                                  statusText,
+                                  statusColor,
+                                  textColor,
+                                  logic: `(${approvalStatus} === 1 ? 'Approved' : ${approvalStatus} === 2 ? 'Rejected' : 'Approval Pending')`
+                                });
+                                
+                                return (
+                                  <span style={{ 
+                                    marginLeft: 8, 
+                                    padding: '2px 8px', 
+                                    borderRadius: 12, 
+                                    fontSize: 10, 
+                                    fontWeight: 'bold',
+                                    background: statusColor,
+                                    color: textColor
+                                  }}>
+                                    {statusText}
+                                  </span>
+                                );
+                              })()}
                             </span>
                             <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
-                              <button
+                              {/* Active/Inactive Button - HIDDEN */}
+                              {/* <button
                                 style={{
                                   background: sku.is_active ? '#30ea03' : '#ccc',
                                   color: sku.is_active ? '#000' : '#666',
@@ -5375,7 +5730,7 @@ const CmSkuDetail: React.FC = () => {
                                 }}
                               >
                                 {sku.is_active ? 'Active' : 'Inactive'}
-                              </button>
+                              </button> */}
                             </span>
                           </div>
                           <Collapse isOpened={openIndex === index}>
@@ -5429,21 +5784,27 @@ const CmSkuDetail: React.FC = () => {
                                   </button> */}
                                   <button
                                     style={{
-                                      background: '#30ea03',
+                                      background: requiresCmApproval ? '#999' : '#30ea03',
                                       color: '#000',
                                       border: 'none',
                                       borderRadius: 6,
                                       fontWeight: 'bold',
                                       padding: '6px 12px',
                                       fontSize: 13,
-                                      cursor: 'pointer',
+                                      cursor: requiresCmApproval ? 'not-allowed' : 'pointer',
                                       boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
                                       display: 'flex',
                                       alignItems: 'center',
-                                      minWidth: 110
+                                      minWidth: 110,
+                                      opacity: requiresCmApproval ? 0.5 : 1
                                     }}
-                                    title="Send for Approval"
+                                    title={requiresCmApproval ? 'Send for Approval disabled - CM approval required' : 'Send for Approval'}
+                                    disabled={requiresCmApproval}
                                     onClick={() => {
+                                      if (requiresCmApproval) {
+                                        return; // Don't proceed if CM approval is required
+                                      }
+                                      
                                       if (!sku.is_active) {
                                         setShowInactiveModal(true);
                                       } else {
@@ -5457,7 +5818,7 @@ const CmSkuDetail: React.FC = () => {
                                   <button
                                     className="add-sku-btn btnCommon btnGreen filterButtons"
                                     style={{ 
-                                      backgroundColor: '#30ea03', 
+                                      backgroundColor: (requiresCmApproval || requiresSendForApproval) ? '#999' : '#30ea03', 
                                       color: '#000', 
                                       minWidth: 110, 
                                       fontSize: 13,
@@ -5465,13 +5826,24 @@ const CmSkuDetail: React.FC = () => {
                                       border: 'none',
                                       borderRadius: 6,
                                       fontWeight: 'bold',
-                                      cursor: 'pointer',
+                                      cursor: (requiresCmApproval || requiresSendForApproval) ? 'not-allowed' : 'pointer',
                                       boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
                                       display: 'flex',
-                                      alignItems: 'center'
+                                      alignItems: 'center',
+                                      opacity: (requiresCmApproval || requiresSendForApproval) ? 0.5 : 1
                                     }}
+                                    disabled={requiresCmApproval || requiresSendForApproval}
+                                    title={
+                                      requiresCmApproval ? 'Add Component disabled - CM approval required' :
+                                      requiresSendForApproval ? 'Add Component disabled - Send for Approval required' :
+                                      'Add Component'
+                                    }
                                     onClick={e => { 
                                       e.stopPropagation(); 
+                                      if (requiresCmApproval || requiresSendForApproval) {
+                                        return; // Don't proceed if CM approval or Send for Approval is required
+                                      }
+                                      
                                       if (!sku.is_active) {
                                         setShowInactiveModal(true);
                                       } else {
@@ -5953,6 +6325,7 @@ const CmSkuDetail: React.FC = () => {
                             </div>
                           </Collapse>
                         </div>
+                      ) : null
                       ))}
                     </div>
                   )}
@@ -9058,11 +9431,345 @@ const CmSkuDetail: React.FC = () => {
         onCancel={handleApprovalCancel}
       />
 
+      {/* Rejection Reason Modal */}
+      {showRejectionReasonModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1050
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: '12px',
+            width: '95%',
+            maxWidth: '600px',
+            maxHeight: '90vh',
+            overflow: 'hidden',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              background: 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)',
+              color: '#fff',
+              padding: '20px 30px',
+              borderRadius: '12px 12px 0 0',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              borderBottom: '2px solid #000'
+            }}>
+              <h5 style={{ margin: 0, fontWeight: '600', fontSize: '18px' }}>
+                <i className="ri-close-circle-line me-2"></i>
+                Rejection Reason Required
+              </h5>
+              <button
+                onClick={handleRejectionReasonCancel}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#fff',
+                  fontWeight: 'bold'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{
+              padding: '24px 30px',
+              flex: 1,
+              overflow: 'auto'
+            }}>
+              <div style={{ marginBottom: '20px' }}>
+                <p style={{ 
+                  fontSize: '16px', 
+                  color: '#333', 
+                  marginBottom: '16px',
+                  lineHeight: '1.5'
+                }}>
+                  Please provide a reason for rejecting this SKU. This information will be recorded for audit purposes.
+                </p>
+                
+                <label style={{
+                  display: 'block',
+                  marginBottom: '8px',
+                  fontWeight: '600',
+                  color: '#333'
+                }}>
+                  Rejection Reason <span style={{ color: '#dc3545' }}>*</span>
+                </label>
+                
+                <textarea
+                  value={rejectionReason}
+                  onChange={(e) => {
+                    setRejectionReason(e.target.value);
+                    if (rejectionReasonError) setRejectionReasonError('');
+                  }}
+                  placeholder="Enter the reason for rejection (e.g., Quality issues, Missing documentation, etc.)"
+                  style={{
+                    width: '100%',
+                    minHeight: '120px',
+                    padding: '12px',
+                    border: rejectionReasonError ? '2px solid #dc3545' : '2px solid #ddd',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontFamily: 'inherit',
+                    resize: 'vertical',
+                    outline: 'none',
+                    transition: 'border-color 0.2s ease'
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#30ea03';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = rejectionReasonError ? '#dc3545' : '#ddd';
+                  }}
+                />
+                
+                {rejectionReasonError && (
+                  <div style={{
+                    color: '#dc3545',
+                    fontSize: '14px',
+                    marginTop: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <i className="ri-error-warning-line"></i>
+                    {rejectionReasonError}
+                  </div>
+                )}
 
 
+              </div>
+            </div>
 
+            {/* Modal Footer */}
+            <div style={{
+              padding: '20px 30px',
+              borderTop: '1px solid #eee',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '12px'
+            }}>
+              <button
+                onClick={handleRejectionReasonCancel}
+                style={{
+                  background: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '10px 20px',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s ease'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5a6268'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#6c757d'}
+              >
+                Cancel
+              </button>
+              
+              <button
+                onClick={handleRejectionReasonConfirm}
+                disabled={!rejectionReason.trim()}
+                style={{
+                  background: rejectionReason.trim() ? '#dc3545' : '#ccc',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '10px 20px',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: rejectionReason.trim() ? 'pointer' : 'not-allowed',
+                  transition: 'background-color 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  if (rejectionReason.trim()) {
+                    e.currentTarget.style.backgroundColor = '#c82333';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (rejectionReason.trim()) {
+                    e.currentTarget.style.backgroundColor = rejectionReason.trim() ? '#dc3545' : '#ccc';
+                  }
+                }}
+              >
+                Confirm Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
+      {/* Approval Comment Modal */}
+      {showApprovalCommentModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1050
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: '12px',
+            width: '95%',
+            maxWidth: '600px',
+            maxHeight: '90vh',
+            overflow: 'hidden',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              background: 'linear-gradient(135deg, #30ea03 0%, #28c402 100%)',
+              color: '#000',
+              padding: '20px 30px',
+              borderRadius: '12px 12px 0 0',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              borderBottom: '2px solid #000'
+            }}>
+              <h5 style={{ margin: 0, fontWeight: '600', fontSize: '18px' }}>
+                <i className="ri-check-line me-2"></i>
+                Approval Comment (Optional)
+              </h5>
+              <button
+                onClick={handleApprovalCommentCancel}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#000',
+                  fontWeight: 'bold'
+                }}
+              >
+                ×
+              </button>
+            </div>
 
+            {/* Modal Body */}
+            <div style={{
+              padding: '24px 30px',
+              flex: 1,
+              overflow: 'auto'
+            }}>
+              <div style={{ marginBottom: '20px' }}>
+                <p style={{ 
+                  fontSize: '16px', 
+                  color: '#333', 
+                  marginBottom: '16px',
+                  lineHeight: '1.5'
+                }}>
+                  You can add an optional comment for this approval. This information will be recorded for audit purposes.
+                </p>
+                
+                <label style={{
+                  display: 'block',
+                  marginBottom: '8px',
+                  fontWeight: '600',
+                  color: '#333'
+                }}>
+                  Approval Comment
+                </label>
+                
+                <textarea
+                  value={approvalComment}
+                  onChange={(e) => setApprovalComment(e.target.value)}
+                  placeholder="Enter an optional comment for approval (e.g., Approved after review, Quality verified, etc.)"
+                  style={{
+                    width: '100%',
+                    minHeight: '120px',
+                    padding: '12px',
+                    border: '2px solid #ddd',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontFamily: 'inherit',
+                    resize: 'vertical',
+                    outline: 'none',
+                    transition: 'border-color 0.2s ease'
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#30ea03';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#ddd';
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '20px 30px',
+              borderTop: '1px solid #eee',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '12px'
+            }}>
+              <button
+                onClick={handleApprovalCommentCancel}
+                style={{
+                  background: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '10px 20px',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s ease'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5a6268'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#6c757d'}
+              >
+                Cancel
+              </button>
+              
+              <button
+                onClick={handleApprovalCommentConfirm}
+                style={{
+                  background: '#30ea03',
+                  color: '#000',
+                  border: 'none',
+                  padding: '10px 20px',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s ease'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#28c402'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#30ea03'}
+              >
+                Confirm Approval
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Component Modal */}
       <EditComponentModal
@@ -10374,6 +11081,74 @@ const CmSkuDetail: React.FC = () => {
           height: 90vh !important;
         }
       `}</style>
+      
+      {/* ===== FROZEN PAGE MODAL ===== */}
+      {showFrozenPageModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999
+        }}>
+          <div style={{
+            background: '#fff',
+            padding: '30px',
+            borderRadius: '12px',
+            maxWidth: '500px',
+            width: '90%',
+            textAlign: 'center',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)'
+          }}>
+            <div style={{
+              fontSize: '48px',
+              color: '#dc3545',
+              marginBottom: '20px'
+            }}>
+              🔒
+            </div>
+            <h3 style={{
+              color: '#333',
+              marginBottom: '15px',
+              fontSize: '24px',
+              fontWeight: '600'
+            }}>
+              Page Frozen
+            </h3>
+            <p style={{
+              color: '#666',
+              marginBottom: '25px',
+              fontSize: '16px',
+              lineHeight: '1.5'
+            }}>
+              This page is frozen until approval. You cannot make any changes until the required approvals are completed.
+            </p>
+            <button
+              onClick={handleCloseFrozenPageModal}
+              style={{
+                background: '#007bff',
+                color: '#fff',
+                border: 'none',
+                padding: '12px 24px',
+                borderRadius: '6px',
+                fontSize: '16px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s'
+              }}
+              onMouseOver={(e) => (e.target as HTMLButtonElement).style.background = '#0056b3'}
+              onMouseOut={(e) => (e.target as HTMLButtonElement).style.background = '#007bff'}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 };

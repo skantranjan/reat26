@@ -39,6 +39,8 @@ interface SkuData {
   sku_reference?: string | null; // Reference SKU for external SKUs
   is_active: boolean;            // Whether the SKU is currently active
   is_approved?: number | boolean; // Approval status (0/false = not approved, 1/true = approved)
+  is_display?: number | boolean;  // Display status (0/false = not displayed, 1/true = displayed)
+  is_sendforapproval?: number | boolean; // Send for approval status (0/false = not sent, 1/true = sent)
   created_by?: string | null;    // User who created the SKU
   created_date: string;          // Date when SKU was created
   period: string;                // Period/Year for the SKU (e.g., "2024")
@@ -48,6 +50,7 @@ interface SkuData {
   dual_source_sku?: string | null; // Dual source SKU information
   skutype?: string | null;       // SKU type: 'internal' or 'external'
   bulk_expert?: string | null;   // Bulk or Expert option
+  is_admin?: boolean;            // Admin access flag from API
 }
 
 /**
@@ -246,6 +249,10 @@ const AdminCmSkuDetail: React.FC = () => {
   const [showErrorModal, setShowErrorModal] = useState(false);              // Error modal visibility
   const [errorMessage, setErrorMessage] = useState('');                     // Error message content
   
+  // ===== ADMIN ACCESS INFO MODAL STATE =====
+  // State for displaying admin access information to users
+  const [showAdminAccessModal, setShowAdminAccessModal] = useState(false);  // Admin access info modal visibility
+  
   // ===== COMPONENT CONFIRMATION STATE =====
   // State for managing component status change confirmations
   const [showComponentConfirm, setShowComponentConfirm] = useState(false);   // Component confirmation modal
@@ -403,8 +410,29 @@ const AdminCmSkuDetail: React.FC = () => {
         
         // Update all states from consolidated response
         if (result.data.skus) {
+          // Debug: Log the first SKU to see what fields are available
+          if (result.data.skus.length > 0) {
+            console.log('🔍 First SKU data received from API:', result.data.skus[0]);
+            console.log('🔍 Checking for new fields:');
+            console.log('  - is_display:', result.data.skus[0].is_display, 'type:', typeof result.data.skus[0].is_display);
+            console.log('  - is_sendforapproval:', result.data.skus[0].is_sendforapproval, 'type:', typeof result.data.skus[0].is_sendforapproval);
+
+          }
+          
           setSkuData(result.data.skus);
-          //console.log('SKUs loaded from universal API:', result.data.skus.length);
+          
+          // Check if any SKU has is_admin: false to disable Add SKU button
+          const hasAnyNonAdminSku = result.data.skus.some(sku => sku.is_admin === false);
+          setRequiresAdminAccess(hasAnyNonAdminSku);
+          console.log('🔒 Any SKU with is_admin: false found:', hasAnyNonAdminSku);
+          
+          // Log all SKU data with is_admin field
+          console.log('📊 All SKU data with is_admin field:', result.data.skus.map(sku => ({
+            sku_code: sku.sku_code,
+            is_admin: sku.is_admin
+          })));
+          
+          console.log('SKUs loaded from universal API:', result.data.skus.length);
         }
         
         if (result.data.descriptions) {
@@ -510,8 +538,16 @@ const AdminCmSkuDetail: React.FC = () => {
     try {
       const data = await fetchDashboardData(['skus']);
       if (data && data.skus) {
+        // Debug: Check for new fields
+        if (data.skus.length > 0) {
+          console.log('🔍 SKU data in fetchSkuDetails:', data.skus[0]);
+          console.log('🔍 Checking new fields:');
+          console.log('  - is_display:', data.skus[0].is_display, 'type:', typeof data.skus[0].is_display);
+          console.log('  - is_sendforapproval:', data.skus[0].is_sendforapproval, 'type:', typeof data.skus[0].is_sendforapproval);
+        }
+        
         setSkuData(data.skus);
-       // console.log('SKU details loaded from universal API');
+        console.log('SKU details loaded from universal API');
       }
     } catch (err) {
       console.error('Error fetching SKU details:', err);
@@ -645,6 +681,8 @@ const AdminCmSkuDetail: React.FC = () => {
     return () => clearTimeout(timer);     // Cleanup timer on unmount
   }, [pageLoadStartTime]);
 
+
+
   // Fetch years from API
   const [years, setYears] = useState<Array<{id: string, period: string}>>([]);
   const [selectedYears, setSelectedYears] = useState<string[]>([]);
@@ -657,10 +695,32 @@ const AdminCmSkuDetail: React.FC = () => {
     return yearOption ? yearOption.period : '';
   };
 
+  // Helper function to normalize approval status to ensure it's always 0, 1, or 2
+  const normalizeApprovalStatus = (isApproved: number | boolean | undefined): number => {
+    if (typeof isApproved === 'boolean') {
+      return isApproved ? 1 : 0;
+    } else if (typeof isApproved === 'string') {
+      const parsed = parseInt(isApproved);
+      return isNaN(parsed) ? 0 : parsed;
+    } else if (typeof isApproved === 'number') {
+      return isApproved;
+    } else {
+      return 0; // Default to pending for undefined/null
+    }
+  };
+
   // Helper function to get SKU panel background color based on approval status
   const getSkuPanelBackgroundColor = (isApproved: number | boolean | undefined) => {
-    // Always return black for collapse bar background
-    return '#000';
+    const normalizedStatus = normalizeApprovalStatus(isApproved);
+    
+    // Check approval status: 0 = pending, 1 = approved, 2 = rejected
+    if (normalizedStatus === 1) {
+      return '#000'; // Black for approved SKUs
+    } else if (normalizedStatus === 2) {
+      return '#721c24'; // Dark red for rejected SKUs
+    } else {
+      return '#721c24'; // Dark red for pending SKUs (0, false, undefined)
+    }
   };
 
   // Update addComponentData period when selectedYears changes
@@ -1083,6 +1143,12 @@ const AdminCmSkuDetail: React.FC = () => {
     setShowComponentConfirm(false);
     setPendingComponentMappingId(null);
     setPendingComponentSkuCode('');
+  };
+  
+  // Handler to close admin access info modal
+  const handleCloseAdminAccessModal = () => {
+    setShowAdminAccessModal(false);
+    console.log('✅ Admin access info modal closed');
   };
 
   // Helper function to get action icon
@@ -1812,6 +1878,8 @@ const AdminCmSkuDetail: React.FC = () => {
             skutype: skutypeBody,  // Only send if checkbox is checked
             bulk_expert: addSkuDropdownValue,  // Add bulk_expert to sku_data as well
             is_approved: 0,  // Add is_approved parameter with value 0
+            is_display: 0,  // Add is_display parameter with value 0
+            is_sendforapproval: 0,  // Add is_sendforapproval parameter with value 0
             created_by: user?.id || 1  // Add logged-in user ID
           },
           components: filteredComponents.map(component => ({
@@ -1860,6 +1928,8 @@ const AdminCmSkuDetail: React.FC = () => {
           skutype: skutypeBody,
           bulk_expert: addSkuDropdownValue,
           is_approved: 0,
+          is_display: 0,
+          is_sendforapproval: 0,
           created_by: user?.id || 1
         },
         components: filteredComponents.map(component => ({
@@ -1952,6 +2022,7 @@ const AdminCmSkuDetail: React.FC = () => {
         // setAddSkuQty(''); // Hidden for now
         setAddSkuSuccess('');
         setLoading(true); // show full-page loader
+        
         await fetchSkuDetails(); // refresh data
         // Refresh component details for all SKUs to ensure consistency using consolidated API
         try {
@@ -2353,6 +2424,7 @@ const AdminCmSkuDetail: React.FC = () => {
         setEditSkuDropdownValue('');
         setEditShowReferenceSkuSection(true);
         setLoading(true); // show full-page loader
+        
         await fetchSkuDetails(); // refresh data
         // Refresh component details for all SKUs to ensure consistency using consolidated API
         try {
@@ -2598,8 +2670,19 @@ const AdminCmSkuDetail: React.FC = () => {
   
   // Add state for material type selection per SKU
   const [skuMaterialTypes, setSkuMaterialTypes] = useState<{ [skuCode: string]: string }>({});
+  
+  // Admin access state - simplified check for all buttons
+  const [requiresAdminAccess, setRequiresAdminAccess] = useState<boolean>(false);
 
-
+  // useEffect: Auto-show admin access modal when is_admin is false
+  // Shows popup automatically on page load to inform user about frozen state
+  useEffect(() => {
+    if (!loading && requiresAdminAccess) {
+      // Automatically show the modal when page loads and admin access is required
+      setShowAdminAccessModal(true);
+      console.log('🔒 Auto-showing admin access modal - page is frozen until approval');
+    }
+  }, [loading, requiresAdminAccess]);
 
   // Filter components based on selected material type using material_type_id
   const getFilteredComponents = (skuCode: string) => {
@@ -3384,7 +3467,7 @@ const AdminCmSkuDetail: React.FC = () => {
             'SKU Type': sku.skutype || '',
             'Bulk/Expert': sku.bulk_expert || '',
             'Is Active': sku.is_active ? 'Yes' : 'No',
-            'Is Approved': sku.is_approved === 1 || sku.is_approved === true ? 'Yes' : 'No',
+            'Is Approved': normalizeApprovalStatus(sku.is_approved) === 1 ? 'Approved' : normalizeApprovalStatus(sku.is_approved) === 2 ? 'Rejected' : 'Pending',
             'Created By': sku.created_by || '',
             'Created Date': sku.created_date ? new Date(sku.created_date).toLocaleDateString() : '',
             'Status': 'SKU Available - No Components'
@@ -4178,15 +4261,28 @@ const AdminCmSkuDetail: React.FC = () => {
                   <li style={{ display: 'flex', alignItems: 'center' }}>
                     <button
                       className="btnCommon btnGreen filterButtons"
-                      style={{ minWidth: 110, fontWeight: 600, marginRight: 0, marginTop: 0, fontSize: '13px', padding: '8px 12px' }}
+                      style={{ 
+                        minWidth: 110, 
+                        fontWeight: 600, 
+                        marginRight: 0, 
+                        marginTop: 0, 
+                        fontSize: '13px', 
+                        padding: '8px 12px',
+                        opacity: requiresAdminAccess ? 0.5 : 1,
+                        cursor: requiresAdminAccess ? 'not-allowed' : 'pointer'
+                      }}
                       onClick={() => {
-                        setShowSkuModal(true);
-                        fetchThreePmOptions(); // Fetch 3PM options when modal opens
-                        // Set default period to the first available period
-                        if (years.length > 0) {
-                          setAddSkuPeriod(years[0].id);
+                        if (!requiresAdminAccess) {
+                          setShowSkuModal(true);
+                          fetchThreePmOptions(); // Fetch 3PM options when modal opens
+                          // Set default period to the first available period
+                          if (years.length > 0) {
+                            setAddSkuPeriod(years[0].id);
+                          }
                         }
                       }}
+                      disabled={requiresAdminAccess}
+                      title={requiresAdminAccess ? 'Add SKU disabled - Admin access required' : 'Add new SKU'}
                     >
                       <span>Add SKU</span> <i className="ri-add-circle-line"></i>
                     </button>
@@ -4237,22 +4333,28 @@ const AdminCmSkuDetail: React.FC = () => {
                         fontWeight: 600, 
                         marginTop: 0,
                         fontSize: '13px',
-                        padding: '8px 12px'
+                        padding: '8px 12px',
+                        opacity: requiresAdminAccess ? 0.5 : 1,
+                        cursor: requiresAdminAccess ? 'not-allowed' : 'pointer'
                       }}
                       onClick={() => {
-                        navigate(`/generate-pdf?cmCode=${encodeURIComponent(cmCode || '')}&cmDescription=${encodeURIComponent(cmDescription)}`, {
-                          state: {
-                            skuData: filteredSkuData,
-                            cmCode: cmCode,
-                            cmDescription: cmDescription,
-                            materialTypes: materialTypes,
-                            unitOfMeasureOptions: unitOfMeasureOptions,
-                            packagingLevelOptions: packagingLevelOptions,
-                            packagingMaterialOptions: packagingMaterialOptions,
-                            componentBaseUoms: componentBaseUoms
-                          }
-                        });
+                        if (!requiresAdminAccess) {
+                          navigate(`/generate-pdf?cmCode=${encodeURIComponent(cmCode || '')}&cmDescription=${encodeURIComponent(cmDescription)}`, {
+                            state: {
+                              skuData: filteredSkuData,
+                              cmCode: cmCode,
+                              cmDescription: cmDescription,
+                              materialTypes: materialTypes,
+                              unitOfMeasureOptions: unitOfMeasureOptions,
+                              packagingLevelOptions: packagingLevelOptions,
+                              packagingMaterialOptions: packagingMaterialOptions,
+                              componentBaseUoms: componentBaseUoms
+                            }
+                          });
+                        }
                       }}
+                      disabled={requiresAdminAccess}
+                      title={requiresAdminAccess ? 'Generate PDF disabled - Admin access required' : 'Generate PDF'}
                     >
                       <i className="ri-file-pdf-2-line" style={{ fontSize: 14, marginRight: '4px' }}></i>
                       <span>Generate PDF</span>
@@ -4283,22 +4385,24 @@ const AdminCmSkuDetail: React.FC = () => {
                 }}>
                                       <button className="add-sku-btn btnCommon btnGreen filterButtons"
                       style={{
-                        background: approvalLoading ? '#ccc' : '#30ea03',
+                        background: approvalLoading ? '#ccc' : (requiresAdminAccess ? '#999' : '#30ea03'),
                         color: '#000',
                         border: 'none',
                         borderRadius: 6,
                         fontWeight: 'bold',
                         padding: '6px 12px',
                         fontSize: 13,
-                        cursor: approvalLoading ? 'not-allowed' : 'pointer',
+                        cursor: (approvalLoading || requiresAdminAccess) ? 'not-allowed' : 'pointer',
                         boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
                         display: 'flex',
                         alignItems: 'center',
-                        minWidth: 110
+                        minWidth: 110,
+                        opacity: requiresAdminAccess ? 0.5 : 1
                       }}
-                      title="Send for Approval"
-                      disabled={approvalLoading}
+                      title={requiresAdminAccess ? 'Send for Approval disabled - Admin access required' : 'Send for Approval'}
+                      disabled={approvalLoading || requiresAdminAccess}
                     onClick={async () => {
+                      
                       try {
                         setApprovalLoading(true);
                         console.log('Send for Approval clicked - making API call...');
@@ -4312,6 +4416,8 @@ const AdminCmSkuDetail: React.FC = () => {
                         if (result.success) {
                           // Show success message
                           alert('Approval request sent successfully!');
+                          // Refresh the page after successful approval
+                          window.location.reload();
                         } else {
                           throw new Error(result.message || 'Failed to process approval request');
                         }
@@ -4402,12 +4508,19 @@ const AdminCmSkuDetail: React.FC = () => {
                         padding: '12px 24px',
                         fontWeight: 'bold',
                         fontSize: '16px',
-                        cursor: 'pointer',
+                        cursor: requiresAdminAccess ? 'not-allowed' : 'pointer',
                         borderRadius: '4px 4px 0 0',
                         borderBottom: activeTab === 'active' ? '2px solid #30ea03' : 'none',
-                        transition: 'all 0.3s ease'
+                        transition: 'all 0.3s ease',
+                        opacity: requiresAdminAccess ? 0.5 : 1
                       }}
-                      onClick={() => setActiveTab('active')}
+                      onClick={() => {
+                        if (!requiresAdminAccess) {
+                          setActiveTab('active');
+                        }
+                      }}
+                      disabled={requiresAdminAccess}
+                      title={requiresAdminAccess ? 'Active tab disabled - Admin access required' : 'View Active SKUs'}
                     >
                       Active SKU ({filteredSkuData.filter(sku => sku.is_active).length})
                     </button>
@@ -4419,12 +4532,19 @@ const AdminCmSkuDetail: React.FC = () => {
                         padding: '12px 24px',
                         fontWeight: 'bold',
                         fontSize: '16px',
-                        cursor: 'pointer',
+                        cursor: requiresAdminAccess ? 'not-allowed' : 'pointer',
                         borderRadius: '4px 4px 0 0',
                         borderBottom: activeTab === 'inactive' ? '2px solid #30ea03' : 'none',
-                        transition: 'all 0.3s ease'
+                        transition: 'all 0.3s ease',
+                        opacity: requiresAdminAccess ? 0.5 : 1
                       }}
-                      onClick={() => setActiveTab('inactive')}
+                      onClick={() => {
+                        if (!requiresAdminAccess) {
+                          setActiveTab('inactive');
+                        }
+                      }}
+                      disabled={requiresAdminAccess}
+                      title={requiresAdminAccess ? 'Inactive tab disabled - Admin access required' : 'View Inactive SKUs'}
                     >
                       Inactive SKU ({filteredSkuData.filter(sku => !sku.is_active).length})
                     </button>
@@ -4487,32 +4607,37 @@ const AdminCmSkuDetail: React.FC = () => {
                         borderRadius: 12, 
                         fontSize: 10, 
                         fontWeight: 'bold',
-                        background: sku.is_approved === 1 || sku.is_approved === true ? '#30ea03' : sku.is_approved === 3 ? '#dc3545' : '#ffc107',
-                        color: sku.is_approved === 1 || sku.is_approved === true ? '#000' : sku.is_approved === 3 ? '#fff' : '#000'
+                        background: normalizeApprovalStatus(sku.is_approved) === 1 ? '#30ea03' : normalizeApprovalStatus(sku.is_approved) === 2 ? '#dc3545' : '#ffc107',
+                        color: normalizeApprovalStatus(sku.is_approved) === 1 ? '#000' : normalizeApprovalStatus(sku.is_approved) === 2 ? '#fff' : '#000'
                       }}>
-                        {sku.is_approved === 1 || sku.is_approved === true ? 'Approved' : sku.is_approved === 3 ? 'Rejected' : 'Approval Pending'}
+                        {normalizeApprovalStatus(sku.is_approved) === 1 ? 'Approved' : normalizeApprovalStatus(sku.is_approved) === 2 ? 'Rejected' : 'Approval Pending'}
                       </span>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
                       <button
                         style={{
-                          background: sku.is_active ? '#30ea03' : '#ccc',
+                          background: requiresAdminAccess ? '#999' : (sku.is_active ? '#30ea03' : '#ccc'),
                           color: sku.is_active ? '#000' : '#fff',
                           border: 'none',
                           borderRadius: 4,
                           fontWeight: 'bold',
                           padding: '3px 18px',
-                          cursor: 'pointer',
+                          cursor: requiresAdminAccess ? 'not-allowed' : 'pointer',
                           marginLeft: 8,
                           minWidth: 90,
                           height: 24,
                           margin: '5px 0',
                           fontSize: 12,
+                          opacity: requiresAdminAccess ? 0.5 : 1
                         }}
                         onClick={e => {
                           e.stopPropagation();
-                          handleHeaderStatusClick(sku.id, sku.is_active);
+                          if (!requiresAdminAccess) {
+                            handleHeaderStatusClick(sku.id, sku.is_active);
+                          }
                         }}
+                        disabled={requiresAdminAccess}
+                        title={requiresAdminAccess ? 'Active/Inactive toggle disabled - Admin access required' : (sku.is_active ? 'Click to deactivate' : 'Click to activate')}
                       >
                         {sku.is_active ? 'Active' : 'Inactive'}
                       </button>
@@ -4540,23 +4665,27 @@ const AdminCmSkuDetail: React.FC = () => {
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           <button className="add-sku-btn btnCommon btnGreen filterButtons"
                             style={{
-                              background: '#30ea03',
+                              background: requiresAdminAccess ? '#999' : '#30ea03',
                               color: '#000',
                               border: 'none',
                               borderRadius: 6,
                               fontWeight: 'bold',
                               padding: '6px 12px',
                               fontSize: 13,
-                              cursor: 'pointer',
+                              cursor: requiresAdminAccess ? 'not-allowed' : 'pointer',
                               boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
                               display: 'flex',
                               alignItems: 'center',
-                              minWidth: 110
+                              minWidth: 110,
+                              opacity: requiresAdminAccess ? 0.5 : 1
                             }}
-                            title="Edit SKU"
+                            title={requiresAdminAccess ? 'Edit SKU disabled - Admin access required' : 'Edit SKU'}
+                            disabled={requiresAdminAccess}
                             onClick={() => {
-                              console.log('SKU passed to Edit:', sku);
-                              handleEditSkuOpen(sku);
+                              if (!requiresAdminAccess) {
+                                console.log('SKU passed to Edit:', sku);
+                                handleEditSkuOpen(sku);
+                              }
                             }}
                           >
                             <span>Edit SKU</span>
@@ -4568,7 +4697,7 @@ const AdminCmSkuDetail: React.FC = () => {
                             <button
                               className="add-sku-btn btnCommon btnGreen filterButtons"
                               style={{ 
-                                backgroundColor: '#30ea03', 
+                                backgroundColor: requiresAdminAccess ? '#999' : '#30ea03', 
                                 color: '#000', 
                                 minWidth: 110, 
                                 fontSize: 13,
@@ -4576,12 +4705,21 @@ const AdminCmSkuDetail: React.FC = () => {
                                 border: 'none',
                                 borderRadius: 6,
                                 fontWeight: 'bold',
-                                cursor: 'pointer',
+                                cursor: requiresAdminAccess ? 'not-allowed' : 'pointer',
                                 boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
                                 display: 'flex',
-                                alignItems: 'center'
+                                alignItems: 'center',
+                                opacity: requiresAdminAccess ? 0.5 : 1
                               }}
-                              onClick={e => { e.stopPropagation(); setSelectedSkuCode(sku.sku_code); setShowAddComponentModal(true); }}
+                              disabled={requiresAdminAccess}
+                              title={requiresAdminAccess ? 'Add Component disabled - Admin access required' : 'Add Component'}
+                              onClick={e => { 
+                                e.stopPropagation(); 
+                                if (!requiresAdminAccess) {
+                                  setSelectedSkuCode(sku.sku_code); 
+                                  setShowAddComponentModal(true); 
+                                }
+                              }}
                             >
                               <span>Add Component</span>
                               <i className="ri-add-circle-line" style={{ marginLeft: 5 }}></i>
@@ -5142,10 +5280,10 @@ const AdminCmSkuDetail: React.FC = () => {
                                 borderRadius: 12, 
                                 fontSize: 10, 
                                 fontWeight: 'bold',
-                                background: sku.is_approved === 1 || sku.is_approved === true ? '#30ea03' : sku.is_approved === 3 ? '#dc3545' : '#ffc107',
-                                color: sku.is_approved === 1 || sku.is_approved === true ? '#000' : sku.is_approved === 3 ? '#fff' : '#000'
+                                background: normalizeApprovalStatus(sku.is_approved) === 1 ? '#30ea03' : normalizeApprovalStatus(sku.is_approved) === 2 ? '#dc3545' : '#ffc107',
+                                color: normalizeApprovalStatus(sku.is_approved) === 1 ? '#000' : normalizeApprovalStatus(sku.is_approved) === 2 ? '#fff' : '#000'
                               }}>
-                                {sku.is_approved === 1 || sku.is_approved === true ? 'Approved' : sku.is_approved === 3 ? 'Rejected' : 'Approval Pending'}
+                                {normalizeApprovalStatus(sku.is_approved) === 1 ? 'Approved' : normalizeApprovalStatus(sku.is_approved) === 2 ? 'Rejected' : 'Approval Pending'}
                               </span>
                             </span>
                             <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
@@ -5230,21 +5368,27 @@ const AdminCmSkuDetail: React.FC = () => {
                                   </button>
                                   <button
                                     style={{
-                                      background: '#30ea03',
+                                      background: requiresAdminAccess ? '#999' : '#30ea03',
                                       color: '#000',
                                       border: 'none',
                                       borderRadius: 6,
                                       fontWeight: 'bold',
                                       padding: '6px 12px',
                                       fontSize: 13,
-                                      cursor: 'pointer',
+                                      cursor: requiresAdminAccess ? 'not-allowed' : 'pointer',
                                       boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
                                       display: 'flex',
                                       alignItems: 'center',
-                                      minWidth: 110
+                                      minWidth: 110,
+                                      opacity: requiresAdminAccess ? 0.5 : 1
                                     }}
-                                    title="Send for Approval"
+                                    title={requiresAdminAccess ? 'Send for Approval disabled - Admin access required' : 'Send for Approval'}
+                                    disabled={requiresAdminAccess}
                                     onClick={async () => {
+                                      if (requiresAdminAccess) {
+                                        return; // Don't proceed if admin access is required
+                                      }
+                                      
                                       if (!sku.is_active) {
                                         setShowInactiveModal(true);
                                       } else {
@@ -5261,6 +5405,8 @@ const AdminCmSkuDetail: React.FC = () => {
                                           if (result.success) {
                                             // Show success message
                                             alert('Approval request sent successfully!');
+                                            // Refresh the page after successful approval
+                                            window.location.reload();
                                           } else {
                                             throw new Error(result.message || 'Failed to process approval request');
                                           }
@@ -5279,7 +5425,7 @@ const AdminCmSkuDetail: React.FC = () => {
                                   <button
                                     className="add-sku-btn btnCommon btnGreen filterButtons"
                                     style={{ 
-                                      backgroundColor: '#30ea03', 
+                                      backgroundColor: requiresAdminAccess ? '#999' : '#30ea03', 
                                       color: '#000', 
                                       minWidth: 110, 
                                       fontSize: 13,
@@ -5287,18 +5433,23 @@ const AdminCmSkuDetail: React.FC = () => {
                                       border: 'none',
                                       borderRadius: 6,
                                       fontWeight: 'bold',
-                                      cursor: 'pointer',
+                                      cursor: requiresAdminAccess ? 'not-allowed' : 'pointer',
                                       boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
                                       display: 'flex',
-                                      alignItems: 'center'
+                                      alignItems: 'center',
+                                      opacity: requiresAdminAccess ? 0.5 : 1
                                     }}
+                                    disabled={requiresAdminAccess}
+                                    title={requiresAdminAccess ? 'Add Component disabled - Admin access required' : 'Add Component'}
                                     onClick={e => { 
                                       e.stopPropagation(); 
-                                      if (!sku.is_active) {
-                                        setShowInactiveModal(true);
-                                      } else {
-                                        setSelectedSkuCode(sku.sku_code); 
-                                        setShowAddComponentModal(true);
+                                      if (!requiresAdminAccess) {
+                                        if (!sku.is_active) {
+                                          setShowInactiveModal(true);
+                                        } else {
+                                          setSelectedSkuCode(sku.sku_code); 
+                                          setShowAddComponentModal(true);
+                                        }
                                       }
                                     }}
                                   >
@@ -10143,6 +10294,83 @@ const AdminCmSkuDetail: React.FC = () => {
             borderRight: '6px solid #2c3e50'
           }}></div>
           {tooltipInfo.text}
+        </div>
+      )}
+
+      {/* Admin Access Info Modal */}
+      {showAdminAccessModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 10000
+        }}>
+          <div style={{
+            backgroundColor: '#fff',
+            borderRadius: '12px',
+            padding: '24px',
+            maxWidth: '500px',
+            width: '90%',
+            boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
+            textAlign: 'center'
+          }}>
+            <div style={{
+              fontSize: '48px',
+              color: '#ffc107',
+              marginBottom: '16px'
+            }}>
+              <i className="ri-information-line"></i>
+            </div>
+            
+            <h3 style={{
+              color: '#333',
+              marginBottom: '16px',
+              fontSize: '20px',
+              fontWeight: '600'
+            }}>
+              Page Frozen
+            </h3>
+            
+            <p style={{
+              color: '#666',
+              marginBottom: '24px',
+              fontSize: '16px',
+              lineHeight: '1.5'
+            }}>
+              First approve till it is freeze. Page is frozen until approval.
+            </p>
+            
+            <button
+              onClick={handleCloseAdminAccessModal}
+              style={{
+                backgroundColor: '#30ea03',
+                color: '#000',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '12px 24px',
+                fontSize: '16px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(48, 234, 3, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
 

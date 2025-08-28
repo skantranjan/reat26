@@ -1,0 +1,22 @@
+// After getting the user email from people picker
+function getUserProfileWithImage(userEmail) {
+    const siteUrl = "https://yourtenant.sharepoint.com/sites/yoursite";
+    const endpoint = `${siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='${userEmail}'`;
+    
+    fetch(endpoint, {
+        headers: {
+            'Accept': 'application/json;odata=verbose',
+            'Authorization': 'Bearer ' + accessToken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        const userProfile = data.d;
+        const pictureUrl = userProfile.PictureUrl;
+        const displayName = userProfile.DisplayName;
+        
+        console.log('User Image:', pictureUrl);
+        console.log('Display Name:', displayName);
+        console.log('Email:', userEmail);
+    });
+}

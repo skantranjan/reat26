@@ -1,0 +1,41 @@
+<html>
+<head>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.7.0/moment.min.js" type="text/javascript"></script>
+    <script type="text/Javascript">  
+        function generateHash(){
+            var Id = "SustainibilityPortal";
+            var key="0KEX8P1I7U9NJHKV1L7XHCVH6QI9XXCS"; //this is different to each environment
+            var date=new Date();
+            var timestamp=moment.utc(date).format('YYYY-MM-DDTHH:mm:ss[Z]'); //timestmap in UTC format (2022-02-24T11:56:00Z)
+            console.log(timestamp);
+			//Create Hmac digest for Get method
+            var dataget="GET"+Id+timestamp;
+			//alert(dataget);
+            var hash = CryptoJS.HmacSHA256(dataget,key);
+            var hashInBase64get = CryptoJS.enc.Base64.stringify(hash);
+			//Create Hmac digest for post method
+			var datapost="POST"+Id+timestamp;
+            var hash = CryptoJS.HmacSHA256(datapost,key);
+            var hashInBase64post = CryptoJS.enc.Base64.stringify(hash);
+
+            var datapost="DELETE"+Id+timestamp;
+            var hash = CryptoJS.HmacSHA256(datapost,key);
+            var hashInBase64delete = CryptoJS.enc.Base64.stringify(hash);
+			
+			var dataput="PUT"+Id+timestamp;
+            var hash = CryptoJS.HmacSHA256(dataput,key);
+            var hashInBase64put = CryptoJS.enc.Base64.stringify(hash);
+
+			//alert("hmac for Get "+hashInBase64get +"\n hmac for post "+hashInBase64post +"\n timestamp  "+timestamp);
+			document.getElementById("response").innerHTML = timestamp.concat("<br>hmacstringfor Get: ",hashInBase64get, " \n <br> hmacstringfor Post: ", hashInBase64post, " \n <br> hmacstringfor Put: ", hashInBase64put, " \n <br> hmacstringfor Delete: ", hashInBase64delete);
+        }    
+          
+     </script>
+	</head>
+	<body>
+	<table>
+	<tr><td><br><br><button onclick="generateHash()">GET Hmac string to pass in request header</button></td></tr></table>
+	 <strong>response  : </strong><span id='response'></span>
+	 </body>
+	 </html>
